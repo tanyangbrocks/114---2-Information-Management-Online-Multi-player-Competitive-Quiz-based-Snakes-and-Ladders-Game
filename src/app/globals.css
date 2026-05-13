@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  color: #0f172a;
+  background: radial-gradient(circle at top, #e0f2fe 0%, #f8fafc 45%, #eef2ff 100%);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
