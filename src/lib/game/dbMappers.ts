@@ -30,7 +30,7 @@ export function parseCards(raw: unknown): GameCard[] {
         name: typeof o.name === "string" ? o.name : "卡片",
         points,
         effect: typeof o.effect === "string" ? o.effect : "",
-        slot,
+        slot: (o.slot === 1 || o.slot === 2 ? o.slot : 1) as any,
         round
       };
     })
