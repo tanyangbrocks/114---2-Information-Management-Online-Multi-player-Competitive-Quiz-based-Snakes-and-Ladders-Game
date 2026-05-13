@@ -22,7 +22,7 @@ export function parseCards(raw: unknown): GameCard[] {
   return raw
     .map((c) => {
       const o = c as Record<string, unknown>;
-      const slot = o.slot === 1 || o.slot === 2 ? o.slot : 1;
+      const slotValue = (o.slot === 1 || o.slot === 2 ? o.slot : 1) as 1 | 2;
       const points = typeof o.points === "number" ? o.points : 0;
       const round = typeof o.round === "number" ? o.round : 0;
       return {
@@ -30,7 +30,7 @@ export function parseCards(raw: unknown): GameCard[] {
         name: typeof o.name === "string" ? o.name : "卡片",
         points,
         effect: typeof o.effect === "string" ? o.effect : "",
-        slot: (o.slot === 1 || o.slot === 2 ? o.slot : 1) as any,
+        slot: slotValue, // 確保這裡有用掉 slotValue,
         round
       };
     })
