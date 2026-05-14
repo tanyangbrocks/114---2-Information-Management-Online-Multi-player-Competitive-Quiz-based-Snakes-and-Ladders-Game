@@ -173,7 +173,7 @@ export function PlayClient({ params }: Props) {
         void sendSignal();
       })();
     }
-  }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, supabase]);
+  }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, sendMoveDone, supabase]);
 
   // boardPlayers 只在棋盤可見時才更新，確保動畫在玩家看到棋盤後才播放
   const [boardPlayers, setBoardPlayers] = useState(players);

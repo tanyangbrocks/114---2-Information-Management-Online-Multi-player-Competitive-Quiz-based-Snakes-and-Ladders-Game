@@ -5,7 +5,7 @@ import { QRInvitePanel } from "@/components/QRInvitePanel";
 import { createClient } from "@/lib/supabase/browser";
 import { rankPlayers } from "@/lib/game/ranking";
 import { useGameRealtime } from "@/hooks/useGameRealtime";
-import { useMemo, useState, useEffect, use } from "react";
+import { useMemo, useState, useEffect, useRef, use } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2, Radio, SkipForward, Trophy, Sparkles } from "lucide-react";
 
@@ -133,15 +133,15 @@ export function HostGameClient({ params }: Props) {
       const finished = game.current_round >= game.round_count;
       const nextPhase = finished ? "finished" : "between_rounds";
       const nextRound = finished ? game.current_round : game.current_round + 1;
-      
+
       const { error: upErr } = await supabase
         .from("games")
-        .update({ 
+        .update({
           phase: nextPhase,
           current_round: nextRound
         })
         .eq("id", game.id);
-      
+
       if (upErr) throw upErr;
       await reload();
       await sendSignal();
@@ -255,8 +255,7 @@ export function HostGameClient({ params }: Props) {
           <h2 className="mb-3 text-sm font-bold text-indigo-900">移動確認狀態</h2>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
             {players.map((p) => {
-              const newPos = movedPlayers.get(p.id);
-              const done = newPos !== undefined;
+              const done = isPlayerMoved(p);
               return (
                 <div
                   key={p.id}
@@ -270,7 +269,7 @@ export function HostGameClient({ params }: Props) {
                   <div>
                     <p className="font-semibold leading-tight">{p.name}</p>
                     <p className="text-xs opacity-70">
-                      {done ? `→ 格 ${newPos}` : "等待移動..."}
+                      {done ? `位置: ${p.position}` : "等待移動..."}
                     </p>
                   </div>
                 </div>
@@ -278,7 +277,7 @@ export function HostGameClient({ params }: Props) {
             })}
           </div>
           <p className="mt-3 text-xs text-indigo-600">
-            {movedPlayers.size} / {players.length} 人已完成移動
+            {players.filter(isPlayerMoved).length} / {players.length} 人已完成移動
           </p>
         </section>
       )}
