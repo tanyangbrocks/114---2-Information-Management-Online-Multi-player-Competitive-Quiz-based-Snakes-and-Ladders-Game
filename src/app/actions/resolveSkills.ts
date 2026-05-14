@@ -5,26 +5,29 @@ import type { GameCard } from "@/types/game";
 import { countSuits } from "@/lib/game/skillEngine";
 
 export async function resolveSkillsAndStartSettle(gameId: string, round: number) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  const supabase = createClient(supabaseUrl, supabaseKey);
-  // 1. 取得所有待處理技能
-  const { data: actions, error: actionsErr } = await supabase
-    .from("skill_actions")
-    .select("*")
-    .eq("game_id", gameId)
-    .eq("round", round)
-    .in("status", ["pending", "ready"]);
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    // 1. 取得所有待處理技能
+    const { data: actions, error: actionsErr } = await supabase
+      .from("skill_actions")
+      .select("*")
+      .eq("game_id", gameId)
+      .eq("round", round)
+      .in("status", ["pending", "ready"]);
 
-  if (actionsErr) throw new Error("讀取技能佇列失敗");
+    if (actionsErr) return { success: false, error: "讀取技能佇列失敗: " + actionsErr.message };
 
-  // 2. 取得所有玩家狀態 (包含名次排序)
-  const { data: players, error: pErr } = await supabase
-    .from("players")
-    .select("*")
-    .eq("game_id", gameId);
+    // 2. 取得所有玩家狀態
+    const { data: players, error: pErr } = await supabase
+      .from("players")
+      .select("*")
+      .eq("game_id", gameId);
 
-  if (pErr || !players) throw new Error("讀取玩家資料失敗");
+    if (pErr || !players) return { success: false, error: "讀取玩家資料失敗: " + pErr?.message };
+
+    // ... (其餘邏輯不變，但在最後 return 前加入 try-catch 的結束)
 
   // 以分數排序 (這裡採用簡化的排序邏輯)
   players.sort((a, b) => {
@@ -117,61 +120,64 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
     await supabase.from("players").update({ position: p.position, cards: p.cards }).eq("id", p.id);
   }
 
-  // 6. 更新遊戲狀態到 settle
-  const { error: gameErr } = await supabase.from("games").update({ phase: "settle" }).eq("id", gameId);
-  if (gameErr) throw new Error("進入結算階段失敗");
+    // 6. 更新遊戲狀態到 settle
+    const { error: gameErr } = await supabase.from("games").update({ phase: "settle" }).eq("id", gameId);
+    if (gameErr) return { success: false, error: "進入結算階段失敗: " + gameErr.message };
 
-  return { success: true };
+    return { success: true };
+  } catch (e: unknown) {
+    return { success: false, error: e instanceof Error ? e.message : "未知伺服器錯誤" };
+  }
 }
 
 export async function respondToSkillCounter(
   actionId: string,
   useCounter: boolean
 ) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // 1. 取得該行動與玩家
-  const { data: action, error: aErr } = await supabase
-    .from("skill_actions")
-    .select("*")
-    .eq("id", actionId)
-    .single();
+    // 1. 取得該行動與玩家
+    const { data: action, error: aErr } = await supabase
+      .from("skill_actions")
+      .select("*")
+      .eq("id", actionId)
+      .single();
 
-  if (aErr || !action) throw new Error("找不到行動");
+    if (aErr || !action) return { success: false, error: "找不到行動" };
 
-  const { data: target, error: pErr } = await supabase
-    .from("players")
-    .select("*")
-    .eq("id", action.target_player_id)
-    .single();
+    const { data: target, error: pErr } = await supabase
+      .from("players")
+      .select("*")
+      .eq("id", action.target_player_id)
+      .single();
 
-  if (pErr || !target) throw new Error("找不到目標玩家");
+    if (pErr || !target) return { success: false, error: "找不到目標玩家" };
 
-  if (useCounter) {
-    // 消耗 2 張菱形並取消行動
-    const cards = target.cards as GameCard[];
-    let consumedCount = 0;
-    const updatedCards = cards.map(c => {
-      if (!c.is_used && c.suit === 'D' && consumedCount < 2) {
-        consumedCount++;
-        return { ...c, is_used: true };
-      }
-      return c;
-    });
+    if (useCounter) {
+      // 消耗 2 張菱形並取消行動
+      const cards = target.cards as GameCard[];
+      let consumedCount = 0;
+      const updatedCards = cards.map(c => {
+        if (!c.is_used && c.suit === 'D' && consumedCount < 2) {
+          consumedCount++;
+          return { ...c, is_used: true };
+        }
+        return c;
+      });
 
-    if (consumedCount < 2) throw new Error("菱形不足");
+      if (consumedCount < 2) return { success: false, error: "菱形不足" };
 
-    await supabase.from("players").update({ cards: updatedCards }).eq("id", target.id);
-    await supabase.from("skill_actions").update({ status: "cancelled" }).eq("id", actionId);
-  } else {
-    // 不使用反制，將行動標記為 'pending' (但這次要標註已詢問過，避免無限迴圈)
-    // 這裡我們暫時用一個技巧：直接改回 pending 但由 resolveSkills 判斷
-    // 或者乾脆加一個 flag 欄位。為了不改 Schema，我們這裡改為 'resolved' 的前置狀態？
-    // 簡單做法：將 status 設為 'ready'
-    await supabase.from("skill_actions").update({ status: "ready" }).eq("id", actionId);
+      await supabase.from("players").update({ cards: updatedCards }).eq("id", target.id);
+      await supabase.from("skill_actions").update({ status: "cancelled" }).eq("id", actionId);
+    } else {
+      await supabase.from("skill_actions").update({ status: "ready" }).eq("id", actionId);
+    }
+
+    return { success: true };
+  } catch (e: unknown) {
+    return { success: false, error: e instanceof Error ? e.message : "未知錯誤" };
   }
-
-  return { success: true };
 }

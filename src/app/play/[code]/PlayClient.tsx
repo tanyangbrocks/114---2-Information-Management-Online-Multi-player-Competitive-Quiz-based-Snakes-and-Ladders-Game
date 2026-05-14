@@ -342,8 +342,12 @@ export function PlayClient({ params }: Props) {
 
       const finalConsumed = consumed.filter(Boolean) as string[];
 
-      await castSkill(game.id, game.current_round, self.id, skill.actionType, finalConsumed, selectedTarget || undefined);
-      setHasActedSkill(true);
+      const res = await castSkill(game.id, game.current_round, self.id, skill.actionType, finalConsumed, selectedTarget || undefined);
+      if (res.success) {
+        setHasActedSkill(true);
+      } else {
+        alert("發動失敗: " + res.error);
+      }
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : String(e));
     } finally {
@@ -355,8 +359,12 @@ export function PlayClient({ params }: Props) {
     if (!game || !self) return;
     setSkillBusy(true);
     try {
-      await castSkill(game.id, game.current_round, self.id, "PASS", []);
-      setHasActedSkill(true);
+      const res = await castSkill(game.id, game.current_round, self.id, "PASS", []);
+      if (res.success) {
+        setHasActedSkill(true);
+      } else {
+        alert("略過失敗: " + res.error);
+      }
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : String(e));
     } finally {
