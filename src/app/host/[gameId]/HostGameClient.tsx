@@ -5,7 +5,7 @@ import { QRInvitePanel } from "@/components/QRInvitePanel";
 import { createClient } from "@/lib/supabase/browser";
 import { rankPlayers } from "@/lib/game/ranking";
 import { useGameRealtime } from "@/hooks/useGameRealtime";
-import { useMemo, useState, use } from "react";
+import { useMemo, useState, useEffect, use } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2, Radio, SkipForward, Trophy, Sparkles } from "lucide-react";
 
@@ -18,9 +18,26 @@ export function HostGameClient({ params }: Props) {
   const searchParams = useSearchParams();
   const hostSecret = searchParams.get("hostSecret") ?? "";
 
-  const { game, players, status, error, reload, sendSignal } = useGameRealtime(gameId);
+  const { game, players, status, error, reload, sendSignal, onMoveDone } = useGameRealtime(gameId);
   const supabase = useMemo(() => createClient(), []);
   const [busy, setBusy] = useState<"send" | "next" | null>(null);
+
+  // 追蹤 settle 階段各玩家的移動確認狀態 (playerId -> newPosition)
+  const [movedPlayers, setMovedPlayers] = useState<Map<string, number>>(new Map());
+
+  // 當 phase 離開 settle 時清空狀態
+  useEffect(() => {
+    if (game?.phase !== "settle") {
+      setMovedPlayers(new Map());
+    }
+  }, [game?.phase]);
+
+  // 訂閱玩家移動完成廣播
+  useEffect(() => {
+    onMoveDone(({ playerId, newPosition }) => {
+      setMovedPlayers((prev) => new Map(prev).set(playerId, newPosition));
+    });
+  }, [onMoveDone]);
 
   const authorized = game && hostSecret && game.host_secret === hostSecret;
   const inviteUrl =
@@ -221,6 +238,39 @@ export function HostGameClient({ params }: Props) {
         <HostPlayerTable game={game} players={players} />
       </div>
 
+      {/* settle 階段：顯示各玩家移動確認狀態 */}
+      {game.phase === "settle" && (
+        <section className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5 shadow-sm">
+          <h2 className="mb-3 text-sm font-bold text-indigo-900">移動確認狀態</h2>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+            {players.map((p) => {
+              const newPos = movedPlayers.get(p.id);
+              const done = newPos !== undefined;
+              return (
+                <div
+                  key={p.id}
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors ${
+                    done
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                      : "border-slate-200 bg-white text-slate-500"
+                  }`}
+                >
+                  <span className="text-base">{done ? "✓" : "⏳"}</span>
+                  <div>
+                    <p className="font-semibold leading-tight">{p.name}</p>
+                    <p className="text-xs opacity-70">
+                      {done ? `→ 格 ${newPos}` : "等待移動..."}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-xs text-indigo-600">
+            {movedPlayers.size} / {players.length} 人已完成移動
+          </p>
+        </section>
+      )}
       {game.phase === "finished" && (
         <section className="mt-8 rounded-2xl border border-amber-200 bg-amber-50/80 p-6 shadow-sm">
           <div className="mb-4 flex items-center gap-2 text-amber-900">

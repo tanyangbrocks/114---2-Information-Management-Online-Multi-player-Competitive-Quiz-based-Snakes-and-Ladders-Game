@@ -46,7 +46,7 @@ export function PlayClient({ params }: Props) {
     };
   }, [code, supabase]);
 
-  const { game, players, status, error, reload, sendSignal } = useGameRealtime(gameId);
+  const { game, players, status, error, reload, sendSignal, sendMoveDone } = useGameRealtime(gameId);
   const playerId = usePlayerSessionStore((s) => (gameId ? s.playerByGame[gameId] : undefined));
   const setPlayerId = usePlayerSessionStore((s) => s.setPlayerId);
 
@@ -168,6 +168,8 @@ export function PlayClient({ params }: Props) {
         await reload();
         // 再關閉 modal：此時 boardPlayers 會更新到已含新位置的 players
         setMovedRound(roundNum);
+        // 廣播移動完成訊息給主辦方
+        void sendMoveDone(self.id, self.name, move.position);
         void sendSignal();
       })();
     }
