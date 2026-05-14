@@ -1,9 +1,12 @@
-import type { GameCard, SkillActionType, Suit } from "@/types/game";
+import type { GameCard, SkillActionType, Suit, PlayerRow } from "@/types/game";
+import { ESCALATORS } from "./boardEngine";
 
 export type AvailableSkill = {
   actionType: SkillActionType;
   requiresTarget: boolean;
   costDescription: string;
+  name: string;
+  description: string;
 };
 
 // 取得玩家目前尚未被消耗的卡牌
@@ -67,70 +70,103 @@ export function canAffordU1(counts: Record<Suit, number>): boolean {
 export function canAffordU2(counts: Record<Suit, number>): boolean {
   if (counts.S >= 1 && counts.C >= 1 && counts.H >= 1 && counts.D >= 1) return true;
   
-  // 如果有多出菱形，可以用來代替缺少的花色。
-  // 目標：S=1, C=1, H=1, D=1 (但 D 可以當萬用牌)
-  // 計算 S, C, H 缺幾張
   const missingS = counts.S === 0 ? 1 : 0;
   const missingC = counts.C === 0 ? 1 : 0;
   const missingH = counts.H === 0 ? 1 : 0;
   const totalMissing = missingS + missingC + missingH;
 
-  // 規則說「可用 2 菱形 + 2 不同花色配對」，意思是如果缺2種，要有至少2張菱形 (其中一張是原本需要的D，一張是替代品。等等，如果缺2種，加上本來的D，需要3張D？)
-  // 其實簡化邏輯：我們需要 4 張牌。
-  // 我們有的 S, C, H 各取最多 1 張，算作 uniqueSuits。
-  // 我們有的 S, C, H 各取最多 1 張。
-  // 我們還缺 4 - uniqueSuits 張。這些全部用 D 來補。
-  // 所以需要 D >= 4 - uniqueSuits。
-  // 但規則說「每次轉化僅限 1 張」！！
-  // 提示："發動需消耗 2 張以上卡片時，可將 1 張菱形當作任一花色。每次轉化僅限 1 張。"
-  // 如果只能轉化 1 張，那 U-2 (消耗 4 種各一) 只能缺 1 種，然後用 D 補。
-  // 所以 S, C, H 只能缺 1 種。
   if (totalMissing <= 1) {
-    // 缺的用 1 張 D 補，再加上原本就需要 1 張 D，所以總共需要 2 張 D。
-    // 如果 totalMissing 是 0，只需要 1 張 D。
     const requiredD = 1 + totalMissing; 
     if (counts.D >= requiredD) return true;
   }
   return false;
 }
 
-export function calculateAvailableSkills(cards: GameCard[]): AvailableSkill[] {
+export function findNearestEscalator(currentPos: number) {
+  const candidates = ESCALATORS.filter(([start]) => start > currentPos);
+  if (candidates.length === 0) return null;
+  return candidates.reduce((prev, curr) => (curr[0] - currentPos < prev[0] - currentPos ? curr : prev));
+}
+
+export function calculateAvailableSkills(cards: GameCard[], otherPlayers: PlayerRow[] = [], currentPosition: number = 1): AvailableSkill[] {
   const availableCards = getAvailableCards(cards);
   const counts = countSuits(availableCards);
   const skills: AvailableSkill[] = [];
   const totalCards = availableCards.length;
 
-  // S-1: 消耗 1S, 指定對象
-  if (canAfford(counts, 1, 0, 0, 0)) {
-    skills.push({ actionType: "S-1", requiresTarget: true, costDescription: "1S" });
+  const hasOtherPlayers = otherPlayers.length > 0;
+  const anyOtherPlayerHasCards = otherPlayers.some(p => p.cards.filter(c => !c.is_used).length > 0);
+
+  // S-1: 指定對象，捨棄其一張手牌
+  if (canAfford(counts, 1, 0, 0, 0) && hasOtherPlayers && anyOtherPlayerHasCards) {
+    skills.push({ 
+      actionType: "S-1", 
+      requiresTarget: true, 
+      costDescription: "1S",
+      name: "黑桃打擊",
+      description: "指定一名玩家，隨機捨棄其一張尚未使用的手牌。"
+    });
   }
-  // S-2: 消耗 2S
+  // S-2: 重新抽取該回合手牌
   if (canAfford(counts, 2, 0, 0, 0)) {
-    skills.push({ actionType: "S-2", requiresTarget: false, costDescription: "2S" });
+    skills.push({ 
+      actionType: "S-2", 
+      requiresTarget: false, 
+      costDescription: "2S",
+      name: "命運重啟",
+      description: "重新抽取本回合的移動卡片，試著改變你的命運。"
+    });
   }
-  // C-1: 消耗 1C
+  // C-1: 自身移動 +1 或 -1
   if (canAfford(counts, 0, 1, 0, 0)) {
-    skills.push({ actionType: "C-1", requiresTarget: false, costDescription: "1C" });
+    skills.push({ 
+      actionType: "C-1", 
+      requiresTarget: false, 
+      costDescription: "1C",
+      name: "梅花挪移",
+      description: "讓自己向前或向後移動 1 格。"
+    });
   }
-  // C-2: 消耗 2C, 指定對象
-  if (canAfford(counts, 0, 2, 0, 0)) {
-    skills.push({ actionType: "C-2", requiresTarget: true, costDescription: "2C" });
+  // C-2: 指定對象移動 +1 或 -1
+  if (canAfford(counts, 0, 2, 0, 0) && hasOtherPlayers) {
+    skills.push({ 
+      actionType: "C-2", 
+      requiresTarget: true, 
+      costDescription: "2C",
+      name: "控制波紋",
+      description: "指定一名其他玩家，使其向前或向後移動 1 格。"
+    });
   }
-  // H-1: 消耗 1H (用戶反應此為被動，暫不列入主動發動)
-  // if (canAfford(counts, 0, 0, 1, 0)) {
-  //   skills.push({ actionType: "H-1", requiresTarget: false, costDescription: "1H" });
-  // }
-  // U-1: 消耗 3 同花色
-  if (canAffordU1(counts)) {
-    skills.push({ actionType: "U-1", requiresTarget: false, costDescription: "3 同色" });
+  // U-1: 傳送至最近梯子
+  const nextLadder = findNearestEscalator(currentPosition);
+  if (canAffordU1(counts) && nextLadder) {
+    skills.push({ 
+      actionType: "U-1", 
+      requiresTarget: false, 
+      costDescription: "3 同色",
+      name: "磁力傳送",
+      description: "自動傳送至距離自己最近的下一個梯子（向上爬）。"
+    });
   }
-  // U-2: 消耗 4 種各一, 指定對象
-  if (canAffordU2(counts)) {
-    skills.push({ actionType: "U-2", requiresTarget: true, costDescription: "4 異色" });
+  // U-2: 指定一隊伍與自身調換位置
+  if (canAffordU2(counts) && hasOtherPlayers) {
+    skills.push({ 
+      actionType: "U-2", 
+      requiresTarget: true, 
+      costDescription: "4 異色",
+      name: "位置交換",
+      description: "與指定的一名玩家互換棋盤上的位置。"
+    });
   }
-  // U-3: 消耗所有手牌 (至少要有 1 張牌？規則沒說。假設 >= 1 即可)
-  if (totalCards > 0) {
-    skills.push({ actionType: "U-3", requiresTarget: false, costDescription: "全手牌" });
+  // U-3: 隨機獲得一種技能效果
+  if (totalCards >= 3) {
+    skills.push({ 
+      actionType: "U-3", 
+      requiresTarget: false, 
+      costDescription: "全手牌",
+      name: "終極狂熱",
+      description: "消耗所有剩餘手牌（至少 3 張），隨機觸發一種強力的效果。"
+    });
   }
 
   return skills;

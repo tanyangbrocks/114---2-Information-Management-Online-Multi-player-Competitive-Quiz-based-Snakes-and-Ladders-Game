@@ -52,6 +52,8 @@ export type PlayerRow = {
   stars: number;
   cards: GameCard[];
   answers: Record<string, QuizChoice>;
+  predicted_steps: number;
+  passive_modifiers: number;
   created_at: string;
   updated_at: string;
 };

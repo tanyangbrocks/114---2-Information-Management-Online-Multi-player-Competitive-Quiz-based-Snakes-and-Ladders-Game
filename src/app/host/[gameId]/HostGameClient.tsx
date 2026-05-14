@@ -240,7 +240,7 @@ export function HostGameClient({ params }: Props) {
               <button
                 onClick={revealAnswer}
                 disabled={busy !== null}
-                className="pudding-button bg-amber-400 text-white hover:bg-amber-500 flex items-center gap-2"
+                className="pudding-button bg-milky-accent text-white hover:opacity-90 flex items-center gap-2"
               >
                 {busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 公布答案
@@ -250,7 +250,7 @@ export function HostGameClient({ params }: Props) {
               <button
                 onClick={enterSkillPhase}
                 disabled={busy !== null}
-                className="pudding-button bg-purple-400 text-white hover:bg-purple-500 flex items-center gap-2"
+                className="pudding-button bg-milky-brown text-white hover:opacity-90 flex items-center gap-2"
               >
                 {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 進入技能階段
@@ -260,7 +260,7 @@ export function HostGameClient({ params }: Props) {
               <button
                 onClick={settleMoves}
                 disabled={busy !== null}
-                className="pudding-button bg-indigo-500 text-white hover:bg-indigo-600 flex items-center gap-2"
+                className="pudding-button bg-milky-apricot text-milky-brown hover:opacity-90 flex items-center gap-2 shadow-lg"
               >
                 {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />}
                 執行結算
@@ -302,7 +302,7 @@ export function HostGameClient({ params }: Props) {
                   key={p.id}
                   className={`flex flex-col gap-1 rounded-2xl border-2 px-4 py-3 transition-all ${
                     done
-                      ? "border-emerald-200 bg-white text-emerald-800 shadow-sm"
+                      ? "border-milky-apricot bg-white text-milky-brown shadow-sm"
                       : "border-milky-beige bg-milky-beige/20 text-milky-brown/40"
                   }`}
                 >
@@ -333,7 +333,7 @@ export function HostGameClient({ params }: Props) {
           <ol className="grid gap-4 sm:grid-cols-3">
             {top.map((p, idx) => (
               <MotionWrapper type="bounce" delay={idx * 0.1} key={p.id} className="pudding-card !bg-white/80 !p-5 relative overflow-hidden group">
-                <div className={`absolute top-0 right-0 px-4 py-1 rounded-bl-2xl font-black text-xs text-white ${idx === 0 ? 'bg-amber-400' : idx === 1 ? 'bg-slate-400' : 'bg-orange-400'}`}>
+                <div className={`absolute top-0 right-0 px-4 py-1 rounded-bl-2xl font-black text-xs text-white ${idx === 0 ? 'bg-milky-apricot' : idx === 1 ? 'bg-milky-accent' : 'bg-milky-brown/40'}`}>
                    RANK {idx + 1}
                 </div>
                 <p className="text-xl font-black text-milky-brown group-hover:scale-110 transition-transform">{p.name}</p>

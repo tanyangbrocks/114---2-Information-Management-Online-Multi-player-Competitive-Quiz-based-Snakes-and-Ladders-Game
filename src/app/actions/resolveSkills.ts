@@ -1,14 +1,16 @@
 "use server";
 
 import { createClient } from "@supabase/supabase-js";
-import type { GameCard } from "@/types/game";
+import type { GameCard, Suit, SkillActionType } from "@/types/game";
 import { countSuits } from "@/lib/game/skillEngine";
+import { ESCALATORS } from "@/lib/game/boardEngine";
 
 export async function resolveSkillsAndStartSettle(gameId: string, round: number) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+
     // 1. 取得所有待處理技能
     const { data: actions, error: actionsErr } = await supabase
       .from("skill_actions")
@@ -27,98 +29,136 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
 
     if (pErr || !players) return { success: false, error: "讀取玩家資料失敗: " + pErr?.message };
 
-    // ... (其餘邏輯不變，但在最後 return 前加入 try-catch 的結束)
+    // 以分數排序
+    players.sort((a, b) => {
+      if (b.stars !== a.stars) return b.stars - a.stars;
+      return b.position - a.position;
+    });
 
-  // 以分數排序 (這裡採用簡化的排序邏輯)
-  players.sort((a, b) => {
-    if (b.stars !== a.stars) return b.stars - a.stars;
-    return b.position - a.position;
-  });
+    // 建立 lookup map
+    const playerMap = new Map(players.map(p => [p.id, p]));
+    const rankMap = new Map(players.map((p, idx) => [p.id, idx + 1]));
 
-  // 建立 lookup map
-  const playerMap = new Map(players.map(p => [p.id, p]));
-  const rankMap = new Map(players.map((p, idx) => [p.id, idx + 1]));
+    // 3. 技能仲裁排序 (排名越落後越晚執行，具備蓋台效果)
+    const sortedActions = [...(actions || [])].sort((a, b) => {
+      const rankA = rankMap.get(a.player_id) || 99;
+      const rankB = rankMap.get(b.player_id) || 99;
+      return rankB - rankA;
+    });
 
-  // 3. 技能仲裁排序 (同回合發動，排名落後者後發動，也就是蓋台)
-  // 如果排名越低，應該越「晚」執行，所以 index 越大越晚執行。
-  // 注意：如果是互相無關的技能，順序其實沒差。
-  const sortedActions = [...(actions || [])].sort((a, b) => {
-    const rankA = rankMap.get(a.player_id) || 99;
-    const rankB = rankMap.get(b.player_id) || 99;
-    return rankB - rankA; // rankB 越大(越落後)，在後面
-  });
+    // 4. 逐一處理技能
+    for (const action of sortedActions) {
+      if (action.action_type === "PASS") {
+        await supabase.from("skill_actions").update({ status: "resolved" }).eq("id", action.id);
+        continue;
+      }
 
-  // 4. 逐一處理技能
-  for (const action of sortedActions) {
-    if (action.action_type === "PASS") {
-      await supabase.from("skill_actions").update({ status: "resolved" }).eq("id", action.id);
-      continue;
-    }
+      const caster = playerMap.get(action.player_id);
+      const target = action.target_player_id ? playerMap.get(action.target_player_id) : null;
+      if (!caster) continue;
 
-    const caster = playerMap.get(action.player_id);
-    const target = action.target_player_id ? playerMap.get(action.target_player_id) : null;
-    if (!caster) continue;
+      // --- 技能反制偵測 (Diamond Counter) ---
+      if (target && action.status === "pending") {
+        const tCards = target.cards as GameCard[];
+        const availableCards = tCards.filter(c => !c.is_used);
+        const suits = countSuits(availableCards);
+        if (suits.D >= 2) {
+          await supabase
+            .from("skill_actions")
+            .update({ status: "waiting_counter" })
+            .eq("id", action.id);
+          return { success: true, waitingForCounter: true, actionId: action.id, targetName: target.name };
+        }
+      }
 
-    // --- 技能反制偵測 (Diamond Counter) ---
-    // 只有針對型技能 (有 target) 且該技能尚未被標記為 'waiting_counter' 或 'ready'
-    if (target && action.status === "pending") {
-      const tCards = target.cards as GameCard[];
-      const availableCards = tCards.filter(c => !c.is_used);
-      const suits = countSuits(availableCards);
-      if (suits.D >= 2) {
-        // 目標有 2 張菱形，觸發反制提示
-        await supabase
-          .from("skill_actions")
-          .update({ status: "waiting_counter" })
-          .eq("id", action.id);
+      // S-1: 指定目標，隨機丟棄手牌
+      if (action.action_type === "S-1" && target) {
+        const tCards = target.cards as GameCard[];
+        const available = tCards.filter(c => !c.is_used);
+        if (available.length > 0) {
+          const dropIdx = Math.floor(Math.random() * available.length);
+          const dropId = available[dropIdx].id;
+          target.cards = tCards.map(c => c.id === dropId ? { ...c, is_used: true } : c);
+        }
+      }
+      
+      // C-1: 自身前進或後退
+      if (action.action_type === "C-1") {
+        const dir = action.metadata?.direction || 1;
+        caster.position = Math.max(1, Math.min(100, caster.position + dir));
+      }
+      // C-2: 指定目標前進或後退
+      if (action.action_type === "C-2" && target) {
+        const dir = action.metadata?.direction || -1;
+        target.position = Math.max(1, Math.min(100, target.position + dir));
+      }
+      // H-1: 自由前進
+      if (action.action_type === "H-1") {
+        const r = rankMap.get(caster.id) || 1;
+        caster.position = Math.min(100, caster.position + r);
+      }
+      // S-2: 命運重啟
+      if (action.action_type === "S-2") {
+        const currentCards = caster.cards as GameCard[];
+        const roundCardIdx = currentCards.findIndex(c => c.round === round);
+        if (roundCardIdx !== -1) {
+          const oldCard = currentCards[roundCardIdx];
+          currentCards[roundCardIdx] = drawServerCard(oldCard.slot, round);
+          caster.cards = currentCards;
+        }
+      }
+      // U-1: 磁力傳送
+      if (action.action_type === "U-1") {
+        const nextLadder = findNearestEscalator(caster.position);
+        if (nextLadder) caster.position = nextLadder[1];
+      }
+      // U-2: 位置調換
+      if (action.action_type === "U-2" && target) {
+        const temp = caster.position;
+        caster.position = target.position;
+        target.position = temp;
+      }
+      // U-3: 終極狂熱
+      if (action.action_type === "U-3") {
+        const effects: SkillActionType[] = ["S-1", "S-2", "C-1", "H-1", "U-1"];
+        const randomEffect = effects[Math.floor(Math.random() * effects.length)];
         
-        // 暫停後續結算，讓 Host 重新整理或等待
-        return { success: true, waitingForCounter: true, actionId: action.id, targetName: target.name };
+        if (randomEffect === "S-1" && target) {
+           const tCards = target.cards as GameCard[];
+           const available = tCards.filter(c => !c.is_used);
+           if (available.length > 0) {
+             const dropId = available[Math.floor(Math.random() * available.length)].id;
+             target.cards = tCards.map(c => c.id === dropId ? { ...c, is_used: true } : c);
+           }
+        } else if (randomEffect === "S-2") {
+          const currentCards = caster.cards as GameCard[];
+          const roundCardIdx = currentCards.findIndex(c => c.round === round);
+          if (roundCardIdx !== -1) {
+            const oldCard = currentCards[roundCardIdx];
+            currentCards[roundCardIdx] = drawServerCard(oldCard.slot, round);
+            caster.cards = currentCards;
+          }
+        } else if (randomEffect === "C-1") {
+          caster.position = Math.min(100, caster.position + 3);
+        } else if (randomEffect === "H-1") {
+          caster.position = Math.min(100, caster.position + 10);
+        } else if (randomEffect === "U-1") {
+          const nextLadder = findNearestEscalator(caster.position);
+          if (nextLadder) caster.position = nextLadder[1];
+        }
       }
+      
+      await supabase.from("skill_actions").update({ status: "resolved" }).eq("id", action.id);
     }
-    // 如果是從反制狀態回來的，或是本來就沒反制，繼續執行
 
-    // S-1: 指定目標，隨機丟棄其一張未使用的手牌
-    if (action.action_type === "S-1" && target) {
-      const tCards = target.cards as GameCard[];
-      const available = tCards.filter(c => !c.is_used);
-      if (available.length > 0) {
-        // 隨機選一張
-        const dropIdx = Math.floor(Math.random() * available.length);
-        const dropId = available[dropIdx].id;
-        target.cards = tCards.map(c => c.id === dropId ? { ...c, is_used: true } : c);
-      }
+    // 5. 批次更新玩家狀態
+    for (const p of Array.from(playerMap.values())) {
+      await supabase.from("players").update({ 
+        position: p.position, 
+        cards: p.cards,
+        predicted_steps: 0 
+      }).eq("id", p.id);
     }
-    
-    // C-1: 自身前進或後退一格 (這裡簡化為必定前進一格)
-    if (action.action_type === "C-1") {
-      caster.position = Math.min(100, caster.position + 1);
-    }
-    // C-2: 指定目標前進或後退一格 (這裡簡化為必定退後一格)
-    if (action.action_type === "C-2" && target) {
-      target.position = Math.max(1, target.position - 1);
-    }
-    // H-1: 自由前進不超過「當前名次」的任意步數 (這裡簡化為前進 = 名次步)
-    if (action.action_type === "H-1") {
-      const r = rankMap.get(caster.id) || 1;
-      caster.position = Math.min(100, caster.position + r);
-    }
-    // U-2: 指定隊伍調換位置
-    if (action.action_type === "U-2" && target) {
-      const temp = caster.position;
-      caster.position = target.position;
-      target.position = temp;
-    }
-    // TODO: 其他技能 (S-2, U-1, U-3) 實作較複雜，先略過或留白
-    
-    // 標記完成
-    await supabase.from("skill_actions").update({ status: "resolved" }).eq("id", action.id);
-  }
-
-  // 5. 批次更新玩家狀態
-  for (const p of Array.from(playerMap.values())) {
-    await supabase.from("players").update({ position: p.position, cards: p.cards }).eq("id", p.id);
-  }
 
     // 6. 更新遊戲狀態到 settle
     const { error: gameErr } = await supabase.from("games").update({ phase: "settle" }).eq("id", gameId);
@@ -130,16 +170,36 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
   }
 }
 
-export async function respondToSkillCounter(
-  actionId: string,
-  useCounter: boolean
-) {
+// --- Helpers ---
+
+function drawServerCard(slot: 1 | 2, round: number): GameCard {
+  const suits: Suit[] = ["S", "C", "D", "H"];
+  const suit = suits[Math.floor(Math.random() * 4)];
+  const points = slot === 1 ? Math.floor(Math.random() * 4) + 1 : Math.floor(Math.random() * 3) + 6;
+  return {
+    id: `card_srv_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    name: `${slot === 2 ? "正解卡" : "錯題卡"} [${suit}] · ${points} 步`,
+    points,
+    effect: "",
+    slot,
+    round,
+    suit,
+    is_used: false
+  };
+}
+
+function findNearestEscalator(currentPos: number) {
+  const candidates = ESCALATORS.filter(([start]) => start > currentPos);
+  if (candidates.length === 0) return null;
+  return candidates.reduce((prev, curr) => (curr[0] - currentPos < prev[0] - currentPos ? curr : prev));
+}
+
+export async function respondToSkillCounter(actionId: string, useCounter: boolean) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // 1. 取得該行動與玩家
     const { data: action, error: aErr } = await supabase
       .from("skill_actions")
       .select("*")
@@ -157,7 +217,6 @@ export async function respondToSkillCounter(
     if (pErr || !target) return { success: false, error: "找不到目標玩家" };
 
     if (useCounter) {
-      // 消耗 2 張菱形並取消行動
       const cards = target.cards as GameCard[];
       let consumedCount = 0;
       const updatedCards = cards.map(c => {

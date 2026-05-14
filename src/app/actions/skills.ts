@@ -11,7 +11,8 @@ export async function castSkill(
   playerId: string,
   actionType: SkillActionType,
   consumedCards: string[],
-  targetPlayerId?: string
+  targetPlayerId?: string,
+  metadata?: any
 ) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -76,6 +77,7 @@ export async function castSkill(
       action_type: actionType,
       target_player_id: targetPlayerId || null,
       consumed_cards: consumedCards,
+      metadata: metadata || null,
       status: "pending"
     });
 

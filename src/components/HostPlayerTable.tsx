@@ -33,7 +33,9 @@ export function HostPlayerTable({ game, players }: Props) {
               ))}
               <th className="px-6 py-3">卡片</th>
               <th className="px-6 py-3">位置</th>
-              <th className="px-6 py-3">星星</th>
+              <th className="px-6 py-4 text-center">被動加成</th>
+              <th className="px-6 py-4 text-center">預計步數</th>
+              <th className="px-6 py-4 text-center">星星</th>
             </tr>
           </thead>
           <tbody>
@@ -62,7 +64,21 @@ export function HostPlayerTable({ game, players }: Props) {
                   )}
                 </td>
                 <td className="px-6 py-4 font-black text-milky-brown">{p.position}</td>
-                <td className="px-6 py-4 font-black text-milky-accent">★ {p.stars}</td>
+                <td className="px-6 py-4">
+                  <div className={`text-center font-black ${((p as any).passive_modifiers || 0) >= 0 ? 'text-milky-brown' : 'text-rose-400'}`}>
+                    {((p as any).passive_modifiers || 0) > 0 ? `+${(p as any).passive_modifiers}` : ((p as any).passive_modifiers || 0)}
+                  </div>
+                </td>
+                <td className="px-6 py-4">
+                   <div className="text-center font-black text-milky-accent">
+                      {(p as any).predicted_steps || 0} 步
+                   </div>
+                </td>
+                <td className="px-6 py-4">
+                   <div className="text-center font-black text-milky-accent">
+                      ★ {p.stars}
+                   </div>
+                </td>
               </tr>
             ))}
             {players.length === 0 && (

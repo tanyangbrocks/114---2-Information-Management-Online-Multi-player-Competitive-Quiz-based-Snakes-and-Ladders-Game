@@ -29,6 +29,7 @@ export function PlayClient({ params }: Props) {
   const [joinBusy, setJoinBusy] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [answerBusy, setAnswerBusy] = useState(false);
+  const [answerFeedback, setAnswerFeedback] = useState<"O" | "X" | null>(null);
 
   const { drawForSlot } = useCardDraw();
 
@@ -96,6 +97,13 @@ export function PlayClient({ params }: Props) {
 
     setAnswerBusy(true);
     try {
+      const cfg = game.rounds_config[game.current_round - 1];
+      const isCorrect = cfg?.answer === choice;
+      
+      // 顯示回饋動畫
+      setAnswerFeedback(isCorrect ? "O" : "X");
+      setTimeout(() => setAnswerFeedback(null), 2000);
+
       const newAnswers = { ...self.answers, [roundKey]: choice };
       const { error: upErr } = await supabase
         .from("players")
@@ -147,15 +155,66 @@ export function PlayClient({ params }: Props) {
 
   // 技能相關狀態
   const [skillBusy, setSkillBusy] = useState(false);
-  const [hasActedSkill, setHasActedSkill] = useState(false);
+  const [skillPreview, setSkillPreview] = useState<AvailableSkill | null>(null);
   const [selectedTarget, setSelectedTarget] = useState<string>("");
+  const [cDirection, setCDirection] = useState<1 | -1 | null>(null);
+
+  // 判斷玩家是否已完成技能階段的行動
+  const [hasActedSkillState, setHasActedSkillState] = useState(false);
+  const hasActedSkill = useMemo(() => {
+    if (hasActedSkillState) return true;
+    if (!self || !skillActions) return false;
+    const myActions = skillActions.filter(a => a.player_id === self.id && a.action_type !== 'PASS');
+    const hasPassed = skillActions.some(a => a.player_id === self.id && a.action_type === 'PASS');
+    
+    if (hasPassed) return true;
+    if (myActions.length === 0) return false;
+
+    // 取得最後一筆動作
+    const lastAction = myActions[myActions.length - 1];
+    
+    // 如果最後一次是 S-2 且已解決，則允許再次發動技能 (除非已經發動過兩次，防禦性限制)
+    if (lastAction.action_type === "S-2" && lastAction.status === "resolved" && myActions.length < 2) {
+      return false;
+    }
+    
+    return true;
+  }, [self, skillActions, hasActedSkillState]);
+
+  // 計算被動與預計步數
+  const { passiveModifier, predictedSteps } = useMemo(() => {
+    if (!self || !game) return { passiveModifier: 0, predictedSteps: 0 };
+    const available = getAvailableCards(self.cards);
+    const counts = countSuits(available);
+    const modifier = counts.S - counts.C; // 黑桃+1, 梅花-1
+    
+    const currentRoundCard = self.cards.find(c => c.round === game.current_round);
+    const baseSteps = currentRoundCard?.points || 0;
+    
+    return { 
+      passiveModifier: modifier, 
+      predictedSteps: Math.max(0, baseSteps + modifier) 
+    };
+  }, [self, game]);
+
+  // 同步數值到資料庫，讓主辦方能看見
+  useEffect(() => {
+    if (self && self.predicted_steps !== predictedSteps) {
+      void supabase.from("players").update({ 
+        predicted_steps: predictedSteps, 
+        passive_modifiers: passiveModifier 
+      }).eq("id", self.id);
+    }
+  }, [predictedSteps, passiveModifier, self, supabase]);
 
   // 當回合改變時重置技能狀態
   useEffect(() => {
-    setHasActedSkill(false);
+    setSkillPreview(null);
     setSelectedTarget("");
+    setCDirection(null);
     setPendingCounter(null);
     setSnakeTarget(null);
+    setHasActedSkillState(false);
   }, [game?.current_round]);
 
   // 反制相關狀態
@@ -207,10 +266,13 @@ export function PlayClient({ params }: Props) {
       // 先標記為「已結算」，防止重複執行
       settledRoundRef.current = game.current_round;
 
-      const move = moveBySteps(self.position, card.points);
+      const move = moveBySteps(self.position, card.points, {
+        spades: suitCounts.S,
+        clubs: suitCounts.C
+      });
       
       // 偵測是否遇到蛇 (掉落步數 > 0)
-      if (move.position < (self.position + card.points)) {
+      if (move.position < (self.position + card.points + suitCounts.S - suitCounts.C)) {
         const hearts = self.cards.filter(c => !c.is_used && c.suit === 'H');
         if (hearts.length > 0) {
           // 彈出紅心抵銷提示
@@ -323,35 +385,76 @@ export function PlayClient({ params }: Props) {
   // 技能相關變數
   const availableCards = self?.cards?.filter((c) => !c.is_used) || [];
   const suitCounts = countSuits(availableCards);
-  const availableSkills = calculateAvailableSkills(self?.cards || []);
+  const availableSkills = calculateAvailableSkills(self?.cards || [], players.filter(p => p.id !== self.id), self.position);
 
   const handleCastSkill = async (skill: AvailableSkill) => {
     if (!game || !self) return;
-    if (skill.requiresTarget && !selectedTarget) {
-      alert("請選擇對象");
-      return;
-    }
+    
+    // 再次檢查是否有菱形轉化或足夠卡片
+    const availableCards = getAvailableCards(self.cards);
+    
     setSkillBusy(true);
     try {
-      // 簡單的自動選卡邏輯 (取最早拿到的牌)
-      // 實務上可能需要玩家自己勾選，這裡先簡單根據消耗種類隨機抓
-      // 假設 U-3 是消耗全部
-      let consumed: (string | undefined)[] = [];
-      if (skill.actionType === "U-3") consumed = availableCards.map(c => c.id);
-      else if (skill.actionType === "S-1") consumed = [availableCards.find(c => c.suit === "S")?.id];
-      else if (skill.actionType === "S-2") consumed = availableCards.filter(c => c.suit === "S").slice(0, 2).map(c => c.id);
-      else if (skill.actionType === "C-1") consumed = [availableCards.find(c => c.suit === "C")?.id];
-      else if (skill.actionType === "C-2") consumed = availableCards.filter(c => c.suit === "C").slice(0, 2).map(c => c.id);
-      else if (skill.actionType === "H-1") consumed = [availableCards.find(c => c.suit === "H")?.id];
-      // U-1, U-2 消耗較複雜，需要一套選卡系統，這裡暫時隨便抓需要的張數 (3張/4張)
-      else if (skill.actionType === "U-1") consumed = availableCards.slice(0, 3).map(c => c.id);
-      else if (skill.actionType === "U-2") consumed = availableCards.slice(0, 4).map(c => c.id);
+      // 根據技能類型準備消耗與參數
+      let consumed: string[] = [];
+      const counts = countSuits(availableCards);
 
-      const finalConsumed = consumed.filter(Boolean) as string[];
+      // 自動選卡邏輯
+      if (skill.actionType === "U-3") {
+        consumed = availableCards.map(c => c.id);
+      } else if (skill.actionType === "S-1") {
+        consumed = [availableCards.find(c => c.suit === "S")?.id].filter(Boolean) as string[];
+      } else if (skill.actionType === "S-2") {
+        consumed = availableCards.filter(c => c.suit === "S").slice(0, 2).map(c => c.id);
+      } else if (skill.actionType === "C-1") {
+        consumed = [availableCards.find(c => c.suit === "C")?.id].filter(Boolean) as string[];
+      } else if (skill.actionType === "C-2") {
+        consumed = availableCards.filter(c => c.suit === "C").slice(0, 2).map(c => c.id);
+      } else if (skill.actionType === "U-1") {
+        const suitToUse = (["S", "C", "H", "D"] as const).find(s => counts[s] >= 3) || 
+                          (["S", "C", "H"] as const).find(s => counts[s] >= 2 && counts.D >= 1);
+        if (suitToUse) {
+           consumed = availableCards.filter(c => c.suit === suitToUse).slice(0, 3).map(c => c.id);
+           if (consumed.length < 3 && counts.D >= 1) {
+              const dCard = availableCards.find(c => c.suit === "D" && !consumed.includes(c.id));
+              if (dCard) consumed.push(dCard.id);
+           }
+        }
+      } else if (skill.actionType === "U-2") {
+        const suits = ["S", "C", "H", "D"] as const;
+        consumed = suits.map(s => availableCards.find(c => c.suit === s)?.id).filter(Boolean) as string[];
+      }
 
-      const res = await castSkill(game.id, game.current_round, self.id, skill.actionType, finalConsumed, selectedTarget || undefined);
+      // 組合 metadata (例如 C-1/C-2 的方向)
+      const metadata = cDirection ? { direction: cDirection } : undefined;
+
+      const res = await castSkill(
+        game.id, 
+        game.current_round, 
+        self.id, 
+        skill.actionType, 
+        consumed, 
+        selectedTarget || undefined,
+        metadata
+      );
+
+      if (skill.actionType === "U-3") {
+         // 模擬隨機抽卡動畫
+         await new Promise(r => setTimeout(r, 1500));
+      }
+
       if (res.success) {
-        setHasActedSkill(true);
+        // 特別處理 S-2：如果抽完卡，重設狀態允許再次發動
+        if (skill.actionType === "S-2") {
+          setHasActedSkillState(false);
+          // 這裡可以加上一個小動畫效果標記
+        } else {
+          setHasActedSkillState(true);
+        }
+        setSkillPreview(null);
+        setSelectedTarget("");
+        setCDirection(null);
+        await reload();
       } else {
         alert("發動失敗: " + res.error);
       }
@@ -368,7 +471,7 @@ export function PlayClient({ params }: Props) {
     try {
       const res = await castSkill(game.id, game.current_round, self.id, "PASS", []);
       if (res.success) {
-        setHasActedSkill(true);
+        setHasActedSkillState(true);
       } else {
         alert("略過失敗: " + res.error);
       }
@@ -382,6 +485,17 @@ export function PlayClient({ params }: Props) {
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 lg:flex-row lg:items-start">
       <section className="flex-1 space-y-4">
+        {/* 答題回饋遮罩 */}
+        {answerFeedback && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none">
+            <MotionWrapper type="bounce" className="flex items-center justify-center">
+              <div className={`flex h-40 w-40 items-center justify-center rounded-full border-8 bg-white/90 backdrop-blur-md shadow-2xl ${answerFeedback === 'O' ? 'border-milky-apricot text-milky-apricot' : 'border-rose-300 text-rose-300'}`}>
+                 <span className="text-8xl font-black">{answerFeedback}</span>
+              </div>
+            </MotionWrapper>
+          </div>
+        )}
+
         {/* 主要狀態提示視窗 */}
         {(needsAnswer || isWaitingReveal || isShowingReveal || isSkillPhase || isWaitingSettle || isCounterPhase) && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-milky-brown/20 p-4 backdrop-blur-sm transition-all">
@@ -416,8 +530,8 @@ export function PlayClient({ params }: Props) {
                     )}
                     {snakeTarget && (
                       <>
-                        <h2 className="text-2xl font-black text-milky-brown">遭遇電鰻/蛇！</h2>
-                        <p className="mt-2 text-milky-brown/70">你即將掉落。是否消耗 1 張紅心抵銷？</p>
+                        <h2 className="text-2xl font-black text-milky-brown">遭遇危險！</h2>
+                        <p className="mt-2 text-milky-brown/70">即將掉落。是否消耗 1 張紅心抵銷？</p>
                         <div className="mt-8 flex gap-4">
                           <button
                             onClick={() => {
@@ -426,7 +540,7 @@ export function PlayClient({ params }: Props) {
                               const card = self.cards.find((c) => c.round === game.current_round);
                               performMove(self.position + (card?.points || 0), 0, hId);
                             }}
-                            className="pudding-button-primary flex-1 bg-rose-400 text-white hover:bg-rose-500"
+                            className="pudding-button-primary flex-1 !bg-milky-accent text-white"
                           >
                             是 (消耗紅心)
                           </button>
@@ -486,18 +600,18 @@ export function PlayClient({ params }: Props) {
                 <div className="text-center">
                   {self.cards.find((c) => c.round === game.current_round) ? (
                     <div className="space-y-6">
-                      <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-lg">
+                      <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-milky-apricot/20 text-milky-brown shadow-lg">
                         <Sparkles className="h-10 w-10 animate-bounce" />
                       </div>
                       <div>
                         <h2 className="text-2xl font-black text-milky-brown">正確答案已揭曉！</h2>
                         <p className="text-sm font-bold text-milky-brown/50">恭喜獲得冒險卡片：</p>
                       </div>
-                      <div className="rounded-3xl border-4 border-emerald-100 bg-emerald-50 p-6 shadow-inner">
-                        <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-600/60">
+                      <div className="rounded-3xl border-4 border-milky-apricot/30 bg-milky-white p-6 shadow-inner">
+                        <p className="text-xs font-black uppercase tracking-[0.2em] text-milky-brown/60">
                           {self.cards.find((c) => c.round === game.current_round)?.name}
                         </p>
-                        <p className="mt-2 text-4xl font-black text-emerald-700">
+                        <p className="mt-2 text-4xl font-black text-milky-brown">
                           +{self.cards.find((c) => c.round === game.current_round)?.points} 步
                         </p>
                       </div>
@@ -514,68 +628,126 @@ export function PlayClient({ params }: Props) {
 
               {isSkillPhase && (
                 <div className="space-y-6">
-                  <div className="text-center">
-                    <h2 className="text-2xl font-black text-milky-brown">技能發動</h2>
-                    <p className="mt-1 text-sm font-bold text-milky-brown/40">選擇您的策略，或是保存體力</p>
-                  </div>
+                  {skillPreview ? (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+                      <div className="text-center">
+                        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-milky-apricot/30 text-milky-brown">
+                          <Sparkles className="h-8 w-8" />
+                        </div>
+                        <h2 className="text-2xl font-black text-milky-brown">{skillPreview.name}</h2>
+                        <p className="mt-2 text-sm font-bold text-milky-brown/60 leading-relaxed">{skillPreview.description}</p>
+                        <div className="mt-4 inline-block rounded-full bg-milky-beige px-4 py-1 text-xs font-black text-milky-brown/40">
+                          消耗代價：{skillPreview.costDescription}
+                        </div>
+                      </div>
 
-                  {!hasActedSkill ? (
-                    <div className="space-y-4">
-                      {availableSkills.some(s => s.requiresTarget) && (
-                        <select
-                          className="w-full rounded-2xl border-2 border-milky-beige bg-white/50 p-4 text-milky-brown font-bold outline-none focus:border-milky-apricot transition-all"
-                          value={selectedTarget}
-                          onChange={(e) => setSelectedTarget(e.target.value)}
-                        >
-                          <option value="">-- 選擇目標玩家 --</option>
-                          {players.filter(p => p.id !== self.id).map(p => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                          ))}
-                        </select>
+                      {/* 對象選擇邏輯 */}
+                      {skillPreview.requiresTarget && (
+                        <div className="space-y-3">
+                          <p className="text-center text-xs font-black uppercase tracking-widest text-milky-brown/30">請選擇目標玩家</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {players.filter(p => p.id !== self.id).map(p => (
+                              <button
+                                key={p.id}
+                                onClick={() => setSelectedTarget(p.id)}
+                                className={`flex items-center gap-3 rounded-2xl border-2 p-3 transition-all ${
+                                  selectedTarget === p.id 
+                                    ? "border-milky-apricot bg-milky-apricot/10 shadow-sm" 
+                                    : "border-milky-beige bg-white/50 grayscale opacity-60"
+                                }`}
+                              >
+                                <div className="h-8 w-8 rounded-full bg-milky-brown flex items-center justify-center text-white font-black text-xs">
+                                  {p.name[0].toUpperCase()}
+                                </div>
+                                <span className="text-sm font-black text-milky-brown truncate">{p.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       )}
 
-                      <div className="grid grid-cols-1 gap-3 max-h-[35vh] overflow-y-auto px-1">
-                        {availableSkills.map((skill) => (
-                          <button
-                            key={skill.actionType}
-                            onClick={() => handleCastSkill(skill)}
-                            disabled={skillBusy}
-                            className="flex items-center justify-between rounded-2xl border-2 border-milky-apricot/30 bg-milky-apricot/10 px-5 py-4 hover:bg-milky-apricot/30 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50"
-                          >
-                            <div className="flex flex-col items-start">
-                              <span className="font-black text-milky-brown text-lg">{skill.actionType}</span>
-                              <span className="text-[10px] font-bold text-milky-brown/40 uppercase">技能代碼</span>
-                            </div>
-                            <span className="text-xs font-black bg-white/60 px-3 py-1 rounded-full text-milky-brown">
-                              消耗: {skill.costDescription}
-                            </span>
-                          </button>
-                        ))}
-                        {availableSkills.length === 0 && (
-                          <div className="text-center py-8 rounded-2xl bg-milky-beige/20 border-2 border-dashed border-milky-beige/50">
-                             <p className="text-sm font-bold text-milky-brown/30">目前沒有可使用的技能</p>
-                          </div>
-                        )}
+                      {/* 方向選擇邏輯 (C-1, C-2) */}
+                      {(skillPreview.actionType === "C-1" || skillPreview.actionType === "C-2") && (
+                        <div className="space-y-3">
+                           <p className="text-center text-xs font-black uppercase tracking-widest text-milky-brown/30">請選擇移動方向</p>
+                           <div className="flex gap-4">
+                              <button 
+                                onClick={() => setCDirection(1)}
+                                className={`flex-1 rounded-2xl border-2 py-4 font-black transition-all ${cDirection === 1 ? 'border-milky-apricot bg-milky-apricot/20 text-milky-brown' : 'border-milky-beige text-milky-brown/30'}`}
+                              >
+                                前進 (+1)
+                              </button>
+                              <button 
+                                onClick={() => setCDirection(-1)}
+                                className={`flex-1 rounded-2xl border-2 py-4 font-black transition-all ${cDirection === -1 ? 'border-milky-apricot bg-milky-apricot/20 text-milky-brown' : 'border-milky-beige text-milky-brown/30'}`}
+                              >
+                                後退 (-1)
+                              </button>
+                           </div>
+                        </div>
+                      )}
+
+                      <div className="flex gap-3 pt-4">
+                         <button
+                           onClick={() => {
+                             setSkillPreview(null);
+                             setSelectedTarget("");
+                             setCDirection(null);
+                           }}
+                           className="pudding-button-secondary flex-1"
+                         >
+                           取消
+                         </button>
+                         <button
+                           disabled={skillBusy || (skillPreview.requiresTarget && !selectedTarget) || ((skillPreview.actionType === 'C-1' || skillPreview.actionType === 'C-2') && !cDirection)}
+                           onClick={() => handleCastSkill(skillPreview)}
+                           className="pudding-button-primary flex-1"
+                         >
+                           {skillBusy ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : "確認發動"}
+                         </button>
                       </div>
-                      
-                      <button
-                        onClick={handleSkipSkill}
-                        disabled={skillBusy}
-                        className="pudding-button-secondary w-full"
-                      >
-                        {skillBusy ? <Loader2 className="mx-auto h-6 w-6 animate-spin text-milky-brown/30" /> : "不發動技能 (略過)"}
-                      </button>
+                    </div>
+                  ) : hasActedSkill ? (
+                    <div className="py-8 text-center animate-in zoom-in">
+                       <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-milky-apricot text-white shadow-lg">
+                          <SkipForward className="h-8 w-8" />
+                       </div>
+                       <h2 className="text-2xl font-black text-milky-brown">已完成發動</h2>
+                       <p className="mt-1 text-sm font-bold text-milky-brown/40">等待其他冒險者...</p>
                     </div>
                   ) : (
-                    <div className="py-10 text-center">
-                       <div className="glass-banner">
-                          <div className="flex flex-col items-center gap-4">
-                            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-lg mb-2">
-                               <Sparkles className="h-8 w-8 animate-pulse" />
+                    <div className="space-y-6">
+                      <div className="text-center">
+                        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-milky-apricot/30 text-milky-brown">
+                          <Sparkles className="h-8 w-8" />
+                        </div>
+                        <h2 className="text-2xl font-black text-milky-brown">發動卡片能力？</h2>
+                        <p className="mt-1 text-sm font-bold text-milky-brown/50">請選擇要使用的冒險卡組合</p>
+                      </div>
+                      <div className="grid gap-3">
+                        {calculateAvailableSkills(self.cards, players.filter(p => p.id !== self.id), self.position).map((skill) => (
+                          <button
+                            key={skill.actionType}
+                            onClick={() => setSkillPreview(skill)}
+                            className="group flex items-center justify-between rounded-3xl border-2 border-milky-beige bg-white/50 p-4 transition-all hover:border-milky-apricot hover:bg-milky-apricot/10"
+                          >
+                            <div className="text-left">
+                               <p className="text-lg font-black text-milky-brown">{skill.name}</p>
+                               <p className="text-[10px] font-bold text-milky-brown/40 uppercase tracking-widest">{skill.costDescription}</p>
                             </div>
-                            <h2 className="text-2xl font-black text-milky-brown tracking-widest">已確認行動，等待結算...</h2>
-                          </div>
-                       </div>
+                            <div className="h-8 w-8 rounded-full border-2 border-milky-beige flex items-center justify-center group-hover:bg-milky-apricot group-hover:border-milky-apricot transition-colors">
+                               <SkipForward className="h-4 w-4 text-milky-beige group-hover:text-white" />
+                            </div>
+                          </button>
+                        ))}
+                        <button
+                          onClick={handleSkipSkill}
+                          disabled={skillBusy}
+                          className="mt-2 text-sm font-black text-milky-brown/30 underline decoration-2 underline-offset-4 hover:text-milky-brown transition-colors"
+                        >
+                          本次不發動
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
