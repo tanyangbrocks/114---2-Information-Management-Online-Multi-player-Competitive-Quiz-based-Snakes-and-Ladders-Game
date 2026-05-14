@@ -242,6 +242,17 @@ export function PlayClient({ params }: Props) {
   const isWaitingSettle = game.phase === "settle" && movedRound !== game.current_round;
   const podium = rankPlayers(players);
 
+  // 棋盤可見狀態：所有 modal 都關閉時，棋盤才是可見的
+  const boardVisible = !needsAnswer && !isWaitingReveal && !isShowingReveal && !isWaitingSettle;
+
+  // boardPlayers 只在棋盤可見時才更新，確保動畫在玩家看到棋盤後才播放
+  const [boardPlayers, setBoardPlayers] = useState(players);
+  useEffect(() => {
+    if (boardVisible) {
+      setBoardPlayers(players);
+    }
+  }, [players, boardVisible]);
+
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 lg:flex-row lg:items-start">
       <section className="flex-1 space-y-4">
@@ -365,7 +376,7 @@ export function PlayClient({ params }: Props) {
             </ol>
           </div>
         )}
-        <BoardGrid players={players} selfId={self.id} />
+        <BoardGrid players={boardPlayers} selfId={self.id} />
       </section>
       <aside className="w-full max-w-sm space-y-3 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm lg:sticky lg:top-6">
         <h2 className="text-sm font-semibold text-slate-900">我的卡片</h2>
