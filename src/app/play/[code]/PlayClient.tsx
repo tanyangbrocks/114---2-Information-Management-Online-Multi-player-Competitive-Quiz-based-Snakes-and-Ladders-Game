@@ -228,12 +228,99 @@ export function PlayClient({ params }: Props) {
   }
 
   const roundKey = String(game.current_round);
-  const needsAnswer = game.phase === "question" && game.current_round > 0 && !self.answers[roundKey];
-  const podium = rankPlayers(players);
+  // 是否需要答題：在題目階段且還沒答
+  const needsAnswer = game.phase === "question" && !self.answers[roundKey];
+  // 是否已答題但在等公布：在題目階段且已答
+  const isWaitingReveal = game.phase === "question" && !!self.answers[roundKey];
+  // 是否正在看抽卡結果：在公布階段
+  const isShowingReveal = game.phase === "reveal";
+  // 是否在等待結算：在結算階段（或剛抽完卡）
+  const isWaitingSettle = game.phase === "settle";
 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 lg:flex-row lg:items-start">
       <section className="flex-1 space-y-4">
+        {/* 主要狀態提示視窗 */}
+        {(needsAnswer || isWaitingReveal || isShowingReveal || isWaitingSettle) && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-2xl">
+              {needsAnswer && (
+                <div className="space-y-6">
+                  <div className="text-center">
+                    <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-sky-600">
+                      <Radio className="h-6 w-6" />
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-900">第 {game.current_round} 回合：請作答</h2>
+                    <p className="mt-1 text-sm text-slate-500">請在手機上選擇您的答案</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(["A", "B", "C", "D"] as QuizChoice[]).map((choice) => (
+                      <button
+                        key={choice}
+                        onClick={() => handleAnswer(choice)}
+                        disabled={answerBusy}
+                        className="flex h-16 items-center justify-center rounded-2xl border-2 border-slate-100 bg-slate-50 text-2xl font-black text-slate-400 transition-all hover:border-sky-500 hover:bg-sky-50 hover:text-sky-600 active:scale-95 disabled:opacity-50"
+                      >
+                        {choice}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {isWaitingReveal && (
+                <div className="py-6 text-center">
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-amber-500">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-900">已送出答案！</h2>
+                  <p className="mt-2 text-slate-500">請等待主辦方公布正確答案...</p>
+                </div>
+              )}
+
+              {isShowingReveal && (
+                <div className="text-center">
+                  {self.cards.find((c) => c.round === game.current_round) ? (
+                    <div className="space-y-4">
+                      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                        <Sparkles className="h-8 w-8" />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-bold text-slate-900">答案已公布！</h2>
+                        <p className="text-sm text-slate-500">你獲得了以下卡片：</p>
+                      </div>
+                      <div className="rounded-2xl border-2 border-emerald-100 bg-emerald-50 p-4">
+                        <p className="text-xs font-bold uppercase tracking-wider text-emerald-600">
+                          {self.cards.find((c) => c.round === game.current_round)?.name}
+                        </p>
+                        <p className="mt-1 text-2xl font-black text-emerald-700">
+                          +{self.cards.find((c) => c.round === game.current_round)?.points} 點
+                        </p>
+                      </div>
+                      <p className="text-sm text-slate-400">等待主辦方發起結算...</p>
+                    </div>
+                  ) : (
+                    <div className="py-10">
+                      <Loader2 className="mx-auto h-8 w-8 animate-spin text-slate-300" />
+                      <p className="mt-4 text-slate-400">正在生成卡片...</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {isWaitingSettle && (
+                <div className="py-6 text-center">
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-50 text-indigo-500">
+                    <SkipForward className="h-8 w-8 animate-pulse" />
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-900">準備移動中</h2>
+                  <p className="mt-2 text-slate-500">所有玩家將同時開始滑行...</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <header className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
           <p className="text-xs uppercase tracking-wide text-sky-700">你的狀態</p>
           <div className="mt-2 flex flex-wrap items-center gap-4 text-slate-900">
