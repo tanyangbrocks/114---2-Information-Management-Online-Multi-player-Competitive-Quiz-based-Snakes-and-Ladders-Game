@@ -182,8 +182,8 @@ export function PlayClient({ params }: Props) {
   }, [self, skillActions, hasActedSkillState]);
 
   // 計算被動與預計步數
-  const { passiveModifier, predictedSteps } = useMemo(() => {
-    if (!self || !game) return { passiveModifier: 0, predictedSteps: 0 };
+  const { passiveModifier, predictedSteps, suitCounts } = useMemo(() => {
+    if (!self || !game) return { passiveModifier: 0, predictedSteps: 0, suitCounts: { S: 0, C: 0, D: 0, H: 0 } };
     const available = getAvailableCards(self.cards);
     const counts = countSuits(available);
     const modifier = counts.S - counts.C; // 黑桃+1, 梅花-1
@@ -193,7 +193,8 @@ export function PlayClient({ params }: Props) {
     
     return { 
       passiveModifier: modifier, 
-      predictedSteps: Math.max(0, baseSteps + modifier) 
+      predictedSteps: Math.max(0, baseSteps + modifier),
+      suitCounts: counts
     };
   }, [self, game]);
 
@@ -283,7 +284,7 @@ export function PlayClient({ params }: Props) {
 
       void performMove(move.position, move.starsGained);
     }
-  }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, sendMoveDone, supabase, performMove]);
+  }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, sendMoveDone, supabase, performMove, suitCounts.S, suitCounts.C]);
 
   // boardPlayers 只在棋盤可見時才更新，確保動畫在玩家看到棋盤後才播放
   const [boardPlayers, setBoardPlayers] = useState(players);
@@ -380,12 +381,8 @@ export function PlayClient({ params }: Props) {
   // 是否在等待結算：在結算階段且玩家尚未移動完畢
   const isWaitingSettle = game.phase === "settle" && movedRound !== game.current_round;
   const isCounterPhase = !!pendingCounter || !!snakeTarget;
-  const podium = rankPlayers(players);
-
-  // 技能相關變數
-  const availableCards = self?.cards?.filter((c) => !c.is_used) || [];
-  const suitCounts = countSuits(availableCards);
-  const availableSkills = calculateAvailableSkills(self?.cards || [], players.filter(p => p.id !== self.id), self.position);
+  
+  const availableSkills = useMemo(() => calculateAvailableSkills(self?.cards || [], players.filter(p => p.id !== self.id), self.position), [self, players]);
 
   const handleCastSkill = async (skill: AvailableSkill) => {
     if (!game || !self) return;
@@ -725,7 +722,7 @@ export function PlayClient({ params }: Props) {
                         <p className="mt-1 text-sm font-bold text-milky-brown/50">請選擇要使用的冒險卡組合</p>
                       </div>
                       <div className="grid gap-3">
-                        {calculateAvailableSkills(self.cards, players.filter(p => p.id !== self.id), self.position).map((skill) => (
+                        {availableSkills.map((skill) => (
                           <button
                             key={skill.actionType}
                             onClick={() => setSkillPreview(skill)}

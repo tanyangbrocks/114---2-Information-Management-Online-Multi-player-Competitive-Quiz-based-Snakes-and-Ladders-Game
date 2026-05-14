@@ -65,13 +65,13 @@ export function HostPlayerTable({ game, players }: Props) {
                 </td>
                 <td className="px-6 py-4 font-black text-milky-brown">{p.position}</td>
                 <td className="px-6 py-4">
-                  <div className={`text-center font-black ${((p as any).passive_modifiers || 0) >= 0 ? 'text-milky-brown' : 'text-rose-400'}`}>
-                    {((p as any).passive_modifiers || 0) > 0 ? `+${(p as any).passive_modifiers}` : ((p as any).passive_modifiers || 0)}
+                  <div className={`text-center font-black ${(p.passive_modifiers || 0) >= 0 ? 'text-milky-brown' : 'text-rose-400'}`}>
+                    {(p.passive_modifiers || 0) > 0 ? `+${p.passive_modifiers}` : (p.passive_modifiers || 0)}
                   </div>
                 </td>
                 <td className="px-6 py-4">
                    <div className="text-center font-black text-milky-accent">
-                      {(p as any).predicted_steps || 0} 步
+                      {p.predicted_steps || 0} 步
                    </div>
                 </td>
                 <td className="px-6 py-4">

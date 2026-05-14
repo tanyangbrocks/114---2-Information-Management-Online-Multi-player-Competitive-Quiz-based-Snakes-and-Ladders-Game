@@ -12,7 +12,7 @@ export async function castSkill(
   actionType: SkillActionType,
   consumedCards: string[],
   targetPlayerId?: string,
-  metadata?: any
+  metadata?: Record<string, unknown>
 ) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
