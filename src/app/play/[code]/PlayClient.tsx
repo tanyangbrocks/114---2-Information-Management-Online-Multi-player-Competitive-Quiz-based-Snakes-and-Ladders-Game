@@ -125,7 +125,7 @@ export function PlayClient({ params }: Props) {
 
         const isCorrect = cfg.answer === choice;
         setAnswerFeedback(isCorrect ? "O" : "X");
-        setTimeout(() => setAnswerFeedback(null), 3000);
+        setTimeout(() => setAnswerFeedback(null), 1500);
 
         const card = drawForSlot(isCorrect ? 2 : 1, game.current_round);
         const newCards = [...self.cards, card];
@@ -215,6 +215,8 @@ export function PlayClient({ params }: Props) {
       setSkillTimer((prev) => {
         if (prev <= 1) {
           clearInterval(interval);
+          setSkillPreview(null);
+          setIsDrawerOpen(false);
           void handleSkipSkill();
           return 0;
         }
@@ -327,7 +329,9 @@ export function PlayClient({ params }: Props) {
         setSkillPreview(null);
         setSelectedTarget("");
         setCDirection(null);
-        await reload();
+        await reload(true);
+      } else {
+        alert(res.error || "發動技能失敗");
       }
     } catch (e) {
       alert(String(e));
@@ -554,7 +558,16 @@ export function PlayClient({ params }: Props) {
           <div className="absolute top-0 right-0 h-1.5 w-full bg-gradient-to-r from-milky-apricot via-milky-accent to-milky-brown opacity-60" />
           <div className="flex flex-wrap items-center gap-10 text-milky-brown">
             <div className="flex items-center gap-4"><div className="h-12 w-12 rounded-[1.2rem] bg-milky-brown text-white flex items-center justify-center shadow-xl group-hover:rotate-6 transition-transform"><User className="h-6 w-6" /></div><div><p className="text-[10px] font-black uppercase tracking-[0.3em] text-milky-brown/40 leading-none mb-1">Adventurer</p><p className="text-2xl font-black tracking-tighter">{self.name}</p></div></div>
-            <div className="flex gap-10"><div><p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">POS</p><p className="text-2xl font-black tracking-tighter">{self.position}</p></div><div><p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">STARS</p><p className="text-2xl font-black text-milky-accent tracking-tighter">★ {self.stars}</p></div></div>
+            <div className="flex gap-10">
+              <div><p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">POS</p><p className="text-2xl font-black tracking-tighter">{self.position}</p></div>
+              <div><p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">STARS</p><p className="text-2xl font-black text-milky-accent tracking-tighter">★ {self.stars}</p></div>
+              <div>
+                <p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">MODIFIER</p>
+                <p className={`text-2xl font-black tracking-tighter ${self.passive_modifiers >= 0 ? 'text-milky-brown' : 'text-milky-brown/60'}`}>
+                  {self.passive_modifiers > 0 ? `+${self.passive_modifiers}` : self.passive_modifiers}
+                </p>
+              </div>
+            </div>
             <div className="ml-auto"><div className="bg-milky-beige/20 px-6 py-3 rounded-[1.5rem] border border-milky-beige/50 shadow-inner text-xs font-black text-milky-brown/50 uppercase tracking-[0.3em]">Round {game.current_round} / {game.round_count}</div></div>
           </div>
         </header>

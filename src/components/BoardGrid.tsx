@@ -153,8 +153,8 @@ function PlayerToken({ player, isSelf, index }: { player: PlayerRow; isSelf: boo
       initial={{
         left: `${initialCoords.x}%`,
         top: `${initialCoords.y}%`,
-        x: `calc(-50% + ${((index % 3) - 1) * 8}px)`,
-        y: `calc(-50% + ${(Math.floor(index / 3) - 1) * 8}px)`
+        x: `calc(-50% + ${((index % 4) - 1.5) * 10}px)`,
+        y: `calc(-50% + ${(Math.floor(index / 4) - 0.5) * 10}px)`
       }}
       className="absolute h-[10%] w-[10%] flex items-center justify-center"
       style={{ zIndex: isSelf ? 20 : 10 }}

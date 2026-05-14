@@ -123,13 +123,16 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
         const effects: SkillActionType[] = ["S-1", "S-2", "C-1", "H-1", "U-1"];
         const randomEffect = effects[Math.floor(Math.random() * effects.length)];
         
-        if (randomEffect === "S-1" && target) {
-           const tCards = target.cards as GameCard[];
-           const available = tCards.filter(c => !c.is_used);
-           if (available.length > 0) {
-             const dropId = available[Math.floor(Math.random() * available.length)].id;
-             target.cards = tCards.map(c => c.id === dropId ? { ...c, is_used: true } : c);
-           }
+        if (randomEffect === "S-1") {
+          const actualTarget = target || players.filter(p => p.id !== caster.id)[Math.floor(Math.random() * (players.length - 1))];
+          if (actualTarget) {
+            const tCards = actualTarget.cards as GameCard[];
+            const available = tCards.filter(c => !c.is_used);
+            if (available.length > 0) {
+              const dropId = available[Math.floor(Math.random() * available.length)].id;
+              actualTarget.cards = tCards.map(c => c.id === dropId ? { ...c, is_used: true } : c);
+            }
+          }
         } else if (randomEffect === "S-2") {
           const currentCards = caster.cards as GameCard[];
           const roundCardIdx = currentCards.findIndex(c => c.round === round);

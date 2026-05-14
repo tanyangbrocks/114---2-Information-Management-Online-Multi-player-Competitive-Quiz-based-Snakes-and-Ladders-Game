@@ -17,7 +17,8 @@
   }
 
   body {
-    background: linear-gradient(135deg, #FFFDD0 0%, #F5F5DC 100%);
+    background: radial-gradient(circle at top left, #FFFDD0 0%, #FBCEB1 50%, #F5F5DC 100%);
+    background-attachment: fixed;
     @apply selection:bg-milky-apricot selection:text-milky-brown;
   }
 }
