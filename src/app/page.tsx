@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Gamepad2, Shield, Sparkles } from "lucide-react";
-import { MotionWrapper } from "@/components/MotionWrapper";
 
 export default function HomePage() {
   return (

@@ -208,10 +208,8 @@ export function PlayClient({ params }: Props) {
     }
   }, [predictedSteps, passiveModifier, self, supabase]);
 
-  const availableSkills = useMemo(() => {
-    if (!self || !game) return [];
-    return calculateAvailableSkills(self.cards || [], players.filter(p => p.id !== self.id), self.position);
-  }, [self, game, players]);
+  const availableCards = useMemo(() => self?.cards?.filter((c) => !c.is_used) || [], [self]);
+  const availableSkills = useMemo(() => calculateAvailableSkills(self?.cards || [], players.filter(p => p.id !== self.id), self.position), [self, players]);
 
   // 當回合改變時重置技能狀態
   useEffect(() => {
