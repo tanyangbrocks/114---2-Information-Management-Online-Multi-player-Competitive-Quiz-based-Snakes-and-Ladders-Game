@@ -5,6 +5,7 @@ import { QRInvitePanel } from "@/components/QRInvitePanel";
 import { createClient } from "@/lib/supabase/browser";
 import { rankPlayers } from "@/lib/game/ranking";
 import { useGameRealtime } from "@/hooks/useGameRealtime";
+import { resolveSkillsAndStartSettle } from "@/app/actions/resolveSkills";
 import { useMemo, useState, useEffect, useRef, use } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2, Radio, SkipForward, Trophy, Sparkles } from "lucide-react";
@@ -111,12 +112,26 @@ export function HostGameClient({ params }: Props) {
     }
   };
 
+  const enterSkillPhase = async () => {
+    if (!game) return;
+    setBusy("next");
+    try {
+      const { error: upErr } = await supabase.from("games").update({ phase: "skill" }).eq("id", game.id);
+      if (upErr) throw upErr;
+      await reload();
+      await sendSignal();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "進入技能發動失敗");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const settleMoves = async () => {
     if (!game) return;
     setBusy("next");
     try {
-      const { error: upErr } = await supabase.from("games").update({ phase: "settle" }).eq("id", game.id);
-      if (upErr) throw upErr;
+      await resolveSkillsAndStartSettle(game.id, game.current_round);
       await reload();
       await sendSignal();
     } catch (e) {
@@ -221,6 +236,16 @@ export function HostGameClient({ params }: Props) {
               </button>
             )}
             {game.phase === "reveal" && (
+              <button
+                onClick={enterSkillPhase}
+                disabled={busy !== null}
+                className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-purple-200 transition-all hover:bg-purple-700 active:scale-95"
+              >
+                {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                進入技能發動階段
+              </button>
+            )}
+            {game.phase === "skill" && (
               <button
                 onClick={settleMoves}
                 disabled={busy !== null}

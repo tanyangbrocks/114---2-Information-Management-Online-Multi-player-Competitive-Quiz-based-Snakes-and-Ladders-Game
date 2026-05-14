@@ -1,6 +1,8 @@
 export type QuizChoice = "A" | "B" | "C" | "D";
 
-export type GamePhase = "lobby" | "question" | "reveal" | "settle" | "between_rounds" | "finished";
+export type GamePhase = "lobby" | "question" | "reveal" | "skill" | "settle" | "between_rounds" | "finished";
+
+export type Suit = "S" | "C" | "D" | "H";
 
 export type RoundConfig = { answer: QuizChoice };
 
@@ -11,6 +13,22 @@ export type GameCard = {
   effect: string;
   slot: 1 | 2;
   round: number;
+  suit: Suit;
+  is_used?: boolean; // 用於標記卡牌是否被消耗
+};
+
+export type SkillActionType = "S-1" | "S-2" | "C-1" | "C-2" | "H-1" | "U-1" | "U-2" | "U-3" | "D-COUNTER" | "H-COUNTER" | "PASS";
+
+export type SkillAction = {
+  id: string; // uuid
+  game_id: string;
+  round: number;
+  player_id: string;
+  action_type: SkillActionType;
+  target_player_id?: string;
+  consumed_cards: string[]; // 卡牌 ID 陣列
+  created_at: string;
+  status: "pending" | "resolved" | "cancelled";
 };
 
 export type GameRow = {

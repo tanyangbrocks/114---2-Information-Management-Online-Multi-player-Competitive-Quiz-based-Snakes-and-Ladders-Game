@@ -1,12 +1,16 @@
-import type { GameCard, GameRow, GamePhase, PlayerRow, QuizChoice, RoundConfig } from "@/types/game";
+import type { GameCard, GameRow, GamePhase, PlayerRow, QuizChoice, RoundConfig, Suit } from "@/types/game";
 
 function coercePhase(p: unknown): GamePhase {
-  if (p === "lobby" || p === "question" || p === "reveal" || p === "settle" || p === "between_rounds" || p === "finished") return p;
+  if (p === "lobby" || p === "question" || p === "reveal" || p === "skill" || p === "settle" || p === "between_rounds" || p === "finished") return p;
   return "lobby";
 }
 
 function isQuizChoice(v: unknown): v is QuizChoice {
   return v === "A" || v === "B" || v === "C" || v === "D";
+}
+
+function isSuit(v: unknown): v is Suit {
+  return v === "S" || v === "C" || v === "D" || v === "H";
 }
 
 export function parseRoundsConfig(raw: unknown): RoundConfig[] {
@@ -25,16 +29,20 @@ export function parseCards(raw: unknown): GameCard[] {
       const slotValue = (o.slot === 1 || o.slot === 2 ? o.slot : 1) as 1 | 2;
       const points = typeof o.points === "number" ? o.points : 0;
       const round = typeof o.round === "number" ? o.round : 0;
+      const suit = isSuit(o.suit) ? o.suit : "S"; // 預設黑桃
+      const is_used = typeof o.is_used === "boolean" ? o.is_used : false;
       return {
         id: typeof o.id === "string" ? o.id : `card_${Math.random().toString(16).slice(2)}`,
         name: typeof o.name === "string" ? o.name : "卡片",
         points,
         effect: typeof o.effect === "string" ? o.effect : "",
-        slot: slotValue, // 確保這裡有用掉 slotValue,
-        round
+        slot: slotValue,
+        round,
+        suit,
+        is_used
       };
     })
-    .filter((c) => c.points > 0);
+    .filter((c) => c.points > 0 || c.suit); // 避免過濾掉點數為 0 但有花色的卡
 }
 
 export function parseAnswers(raw: unknown): Record<string, QuizChoice> {

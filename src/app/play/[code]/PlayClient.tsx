@@ -6,8 +6,10 @@ import { useGameRealtime } from "@/hooks/useGameRealtime";
 import { rankPlayers } from "@/lib/game/ranking";
 import { createClient } from "@/lib/supabase/browser";
 import { usePlayerSessionStore } from "@/store/playerSessionStore";
-import type { QuizChoice } from "@/types/game";
-import { Loader2, Sparkles, User, Radio, SkipForward } from "lucide-react";
+import { type QuizChoice, type GameCard, type SkillActionType } from "@/types/game";
+import { calculateAvailableSkills, countSuits, type AvailableSkill } from "@/lib/game/skillEngine";
+import { castSkill } from "@/app/actions/skills";
+import { Loader2, Sparkles, User, Radio, SkipForward, Swords, Target } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, use } from "react";
 import { moveBySteps } from "@/lib/game/boardEngine";
 
@@ -141,6 +143,17 @@ export function PlayClient({ params }: Props) {
   // 記錄玩家「已完成移動的回合編號」，移動完畢後立即關閉等待 modal
   const [movedRound, setMovedRound] = useState<number>(-1);
 
+  // 技能相關狀態
+  const [skillBusy, setSkillBusy] = useState(false);
+  const [hasActedSkill, setHasActedSkill] = useState(false);
+  const [selectedTarget, setSelectedTarget] = useState<string>("");
+
+  // 當回合改變時重置技能狀態
+  useEffect(() => {
+    setHasActedSkill(false);
+    setSelectedTarget("");
+  }, [game?.current_round]);
+
   // 處理移動邏輯 (當主辦方進入 settle 階段)
   useEffect(() => {
     if (game?.phase === "settle" && self && gameId) {
@@ -259,17 +272,71 @@ export function PlayClient({ params }: Props) {
   const isWaitingReveal = game.phase === "question" && !!self.answers[roundKey];
   // 是否正在看抽卡結果：在公布階段
   const isShowingReveal = game.phase === "reveal";
+  // 是否在發動技能：在技能階段
+  const isSkillPhase = game.phase === "skill";
   // 是否在等待結算：在結算階段且玩家尚未移動完畢
   const isWaitingSettle = game.phase === "settle" && movedRound !== game.current_round;
   const podium = rankPlayers(players);
+
+  // 技能相關變數
+  const availableCards = self?.cards?.filter((c) => !c.is_used) || [];
+  const suitCounts = countSuits(availableCards);
+  const availableSkills = calculateAvailableSkills(self?.cards || []);
+
+  const handleCastSkill = async (skill: AvailableSkill) => {
+    if (!game || !self) return;
+    if (skill.requiresTarget && !selectedTarget) {
+      alert("請選擇對象");
+      return;
+    }
+    setSkillBusy(true);
+    try {
+      // 簡單的自動選卡邏輯 (取最早拿到的牌)
+      // 實務上可能需要玩家自己勾選，這裡先簡單根據消耗種類隨機抓
+      // 假設 U-3 是消耗全部
+      let consumed: string[] = [];
+      if (skill.actionType === "U-3") consumed = availableCards.map(c => c.id);
+      else if (skill.actionType === "S-1") consumed = [availableCards.find(c => c.suit === "S")?.id!];
+      else if (skill.actionType === "S-2") consumed = availableCards.filter(c => c.suit === "S").slice(0, 2).map(c => c.id);
+      else if (skill.actionType === "C-1") consumed = [availableCards.find(c => c.suit === "C")?.id!];
+      else if (skill.actionType === "C-2") consumed = availableCards.filter(c => c.suit === "C").slice(0, 2).map(c => c.id);
+      else if (skill.actionType === "H-1") consumed = [availableCards.find(c => c.suit === "H")?.id!];
+      // U-1, U-2 消耗較複雜，需要一套選卡系統，這裡暫時隨便抓需要的張數 (3張/4張)
+      else if (skill.actionType === "U-1") consumed = availableCards.slice(0, 3).map(c => c.id);
+      else if (skill.actionType === "U-2") consumed = availableCards.slice(0, 4).map(c => c.id);
+
+      // 去除未定義的 (防呆)
+      consumed = consumed.filter(Boolean);
+
+      await castSkill(game.id, game.current_round, self.id, skill.actionType, consumed, selectedTarget || undefined);
+      setHasActedSkill(true);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSkillBusy(false);
+    }
+  };
+
+  const handleSkipSkill = async () => {
+    if (!game || !self) return;
+    setSkillBusy(true);
+    try {
+      await castSkill(game.id, game.current_round, self.id, "PASS", []);
+      setHasActedSkill(true);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSkillBusy(false);
+    }
+  };
 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 lg:flex-row lg:items-start">
       <section className="flex-1 space-y-4">
         {/* 主要狀態提示視窗 */}
-        {(needsAnswer || isWaitingReveal || isShowingReveal || isWaitingSettle) && (
+        {(needsAnswer || isWaitingReveal || isShowingReveal || isSkillPhase || isWaitingSettle) && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-2xl">
+            <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-8 shadow-2xl">
               {needsAnswer && (
                 <div className="space-y-6">
                   <div className="text-center">
@@ -334,6 +401,66 @@ export function PlayClient({ params }: Props) {
                 </div>
               )}
 
+              {isSkillPhase && (
+                <div className="space-y-6">
+                  <div className="text-center">
+                    <h2 className="text-xl font-bold text-slate-900">技能發動階段</h2>
+                    <p className="mt-1 text-sm text-slate-500">選擇要發動的能力，或直接略過</p>
+                  </div>
+
+                  {!hasActedSkill ? (
+                    <div className="space-y-4">
+                      {/* 目標選擇 (如果有的話) */}
+                      {availableSkills.some(s => s.requiresTarget) && (
+                        <select
+                          className="w-full rounded-xl border border-slate-200 p-3 text-slate-900"
+                          value={selectedTarget}
+                          onChange={(e) => setSelectedTarget(e.target.value)}
+                        >
+                          <option value="">-- 選擇目標玩家 --</option>
+                          {players.filter(p => p.id !== self.id).map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                      )}
+
+                      <div className="grid grid-cols-1 gap-2 max-h-[30vh] overflow-y-auto">
+                        {availableSkills.map((skill) => (
+                          <button
+                            key={skill.actionType}
+                            onClick={() => handleCastSkill(skill)}
+                            disabled={skillBusy}
+                            className="flex items-center justify-between rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 hover:bg-sky-100 disabled:opacity-50"
+                          >
+                            <span className="font-bold text-sky-800">{skill.actionType}</span>
+                            <span className="text-xs text-sky-600">消耗: {skill.costDescription}</span>
+                          </button>
+                        ))}
+                        {availableSkills.length === 0 && (
+                          <p className="text-center text-sm text-slate-500 py-4">目前沒有可發動的技能</p>
+                        )}
+                      </div>
+                      
+                      <button
+                        onClick={handleSkipSkill}
+                        disabled={skillBusy}
+                        className="w-full rounded-xl border-2 border-slate-200 py-3 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {skillBusy ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : "不發動能力 (略過)"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="py-6 text-center">
+                      <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-500">
+                        <Sparkles className="h-8 w-8" />
+                      </div>
+                      <h2 className="text-xl font-bold text-slate-900">已確認行動</h2>
+                      <p className="mt-2 text-slate-500">等待主辦方結算...</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {isWaitingSettle && (
                 <div className="py-6 text-center">
                   <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-50 text-indigo-500">
@@ -389,14 +516,25 @@ export function PlayClient({ params }: Props) {
         <BoardGrid players={boardPlayers} selfId={self.id} />
       </section>
       <aside className="w-full max-w-sm space-y-3 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm lg:sticky lg:top-6">
-        <h2 className="text-sm font-semibold text-slate-900">我的卡片</h2>
-        {self.cards.length === 0 ? (
-          <p className="text-sm text-slate-600">尚無卡片，等待主辦方出題並作答。</p>
+        <h2 className="text-sm font-semibold text-slate-900">我的卡片 (手牌)</h2>
+        <div className="flex justify-between rounded-lg bg-slate-50 p-2 text-sm font-bold shadow-inner">
+          <span className="text-slate-800">♠ {suitCounts.S}</span>
+          <span className="text-slate-800">♣ {suitCounts.C}</span>
+          <span className="text-rose-600">♦ {suitCounts.D}</span>
+          <span className="text-rose-600">♥ {suitCounts.H}</span>
+        </div>
+        {availableCards.length === 0 ? (
+          <p className="text-sm text-slate-600">尚無卡片，或所有卡片已使用。</p>
         ) : (
-          <ul className="space-y-2 text-sm text-slate-800">
-            {[...self.cards].reverse().map((c) => (
-              <li key={c.id} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                <p className="font-semibold">{c.name}</p>
+          <ul className="space-y-2 text-sm text-slate-800 max-h-[40vh] overflow-y-auto">
+            {[...availableCards].reverse().map((c) => (
+              <li key={c.id} className="rounded-lg border border-slate-100 bg-white px-3 py-2 shadow-sm">
+                <div className="flex justify-between items-center">
+                  <p className="font-semibold">{c.name}</p>
+                  <span className={`text-lg ${c.suit === 'S' || c.suit === 'C' ? 'text-slate-800' : 'text-rose-600'}`}>
+                    {c.suit === 'S' ? '♠' : c.suit === 'C' ? '♣' : c.suit === 'D' ? '♦' : '♥'}
+                  </span>
+                </div>
                 <p className="text-xs text-slate-500">回合 {c.round}</p>
               </li>
             ))}

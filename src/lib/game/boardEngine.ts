@@ -39,13 +39,19 @@ export function bounceOverHundred(pos: number): number {
   return Math.min(100, Math.max(1, p));
 }
 
-export function applyConnectors(start: number): { position: number; path: number[] } {
+export function applyConnectors(start: number, ignoreEel: boolean = false): { position: number; path: number[] } {
   const path: number[] = [start];
   let current = start;
   let guard = 0;
   while (guard < 30) {
     const next = getJumpTarget(current);
     if (next === null) break;
+    
+    // 如果忽略電鰻，且這是一個電鰻的起點，就不掉落
+    if (ignoreEel && EELS.some(([from]) => from === current)) {
+      break;
+    }
+    
     current = next;
     path.push(current);
     guard += 1;
@@ -59,13 +65,26 @@ export type MoveResult = {
   path: number[];
 };
 
+export type MoveModifiers = {
+  spades?: number;
+  clubs?: number;
+  ignoreEel?: boolean;
+};
+
 /**
- * 從 pos 前進 steps 格，套用反彈、手扶梯／電鰻；若最終落在 100 則星星+1並回到 1。
+ * 從 pos 前進 steps 格，加上黑桃(spades)減去梅花(clubs)，套用反彈、手扶梯／電鰻；若最終落在 100 則星星+1並回到 1。
  */
-export function moveBySteps(pos: number, steps: number): MoveResult {
-  let p = bounceOverHundred(pos + steps);
+export function moveBySteps(pos: number, baseSteps: number, modifiers: MoveModifiers = {}): MoveResult {
+  const s = modifiers.spades ?? 0;
+  const c = modifiers.clubs ?? 0;
+  const netSteps = baseSteps + s - c;
+  
+  let p = bounceOverHundred(pos + netSteps);
+  // 防止後退到 1 以下
+  if (p < 1) p = 1;
+  
   const path: number[] = [p];
-  const chained = applyConnectors(p);
+  const chained = applyConnectors(p, modifiers.ignoreEel);
   p = chained.position;
   path.push(...chained.path.slice(1));
 

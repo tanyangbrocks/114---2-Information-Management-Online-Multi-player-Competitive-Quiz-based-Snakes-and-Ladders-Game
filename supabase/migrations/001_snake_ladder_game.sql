@@ -11,7 +11,7 @@ create table if not exists public.games (
   rounds_config jsonb not null,
   current_round int not null default 0,
   phase text not null default 'lobby'
-    check (phase in ('lobby', 'question', 'reveal', 'settle', 'between_rounds', 'finished')),
+    check (phase in ('lobby', 'question', 'reveal', 'skill', 'settle', 'between_rounds', 'finished')),
   question_epoch bigint not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -27,6 +27,18 @@ create table if not exists public.players (
   answers jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+create table if not exists public.skill_actions (
+  id uuid primary key default gen_random_uuid(),
+  game_id uuid not null references public.games (id) on delete cascade,
+  round int not null,
+  player_id uuid not null references public.players (id) on delete cascade,
+  action_type text not null,
+  target_player_id uuid references public.players (id) on delete cascade,
+  consumed_cards jsonb not null default '[]'::jsonb,
+  status text not null default 'pending' check (status in ('pending', 'resolved', 'cancelled')),
+  created_at timestamptz not null default now()
 );
 
 create index if not exists players_game_id_idx on public.players (game_id);
@@ -75,3 +87,4 @@ create policy "players_delete" on public.players for delete using (true);
 grant usage on schema public to anon, authenticated;
 grant all on public.games to anon, authenticated;
 grant all on public.players to anon, authenticated;
+grant all on public.skill_actions to anon, authenticated;
