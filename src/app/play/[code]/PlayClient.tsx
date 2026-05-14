@@ -138,6 +138,9 @@ export function PlayClient({ params }: Props) {
   // 用 ref 記錄「已結算的回合編號」，防止 settle useEffect 因 self 改變而無限觸發
   const settledRoundRef = useRef<number>(-1);
 
+  // 記錄玩家「已完成移動的回合編號」，移動完畢後立即關閉等待 modal
+  const [movedRound, setMovedRound] = useState<number>(-1);
+
   // 處理移動邏輯 (當主辦方進入 settle 階段)
   useEffect(() => {
     if (game?.phase === "settle" && self && gameId) {
@@ -152,12 +155,15 @@ export function PlayClient({ params }: Props) {
 
       const move = moveBySteps(self.position, card.points);
       const newStars = self.stars + move.starsGained;
+      const roundNum = game.current_round;
 
       void supabase
         .from("players")
         .update({ position: move.position, stars: newStars })
         .eq("id", self.id)
         .then(() => {
+          // 移動完畢後立即關閉「準備移動中」modal
+          setMovedRound(roundNum);
           void reload();
           void sendSignal();
         });
@@ -232,8 +238,8 @@ export function PlayClient({ params }: Props) {
   const isWaitingReveal = game.phase === "question" && !!self.answers[roundKey];
   // 是否正在看抽卡結果：在公布階段
   const isShowingReveal = game.phase === "reveal";
-  // 是否在等待結算：在結算階段（或剛抽完卡）
-  const isWaitingSettle = game.phase === "settle";
+  // 是否在等待結算：在結算階段且玩家尚未移動完畢
+  const isWaitingSettle = game.phase === "settle" && movedRound !== game.current_round;
   const podium = rankPlayers(players);
 
   return (
