@@ -65,6 +65,10 @@ export function useGameRealtime(gameId: string | null) {
           void reload();
         }
       )
+      // 新增：監聽廣播事件作為備援，確保即時性
+      .on("broadcast", { event: "refresh" }, () => {
+        void reload();
+      })
       .subscribe();
 
     return () => {

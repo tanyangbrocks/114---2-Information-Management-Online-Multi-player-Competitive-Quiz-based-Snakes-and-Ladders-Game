@@ -26,6 +26,15 @@ export function HostGameClient({ params }: Props) {
   const inviteUrl =
     typeof window !== "undefined" && game ? `${window.location.origin}/play/${game.invite_code}` : "";
 
+  // 主動發送廣播，通知所有連線者重新整理資料
+  const triggerRefresh = async () => {
+    await supabase.channel(`game-room:${gameId}`).send({
+      type: "broadcast",
+      event: "refresh",
+      payload: {}
+    });
+  };
+
   const sendQuestion = async () => {
     if (!game) return;
     setBusy("send");
@@ -49,6 +58,7 @@ export function HostGameClient({ params }: Props) {
         .eq("id", game.id);
       if (upErr) throw upErr;
       await reload();
+      await triggerRefresh();
     } catch (e) {
       alert(e instanceof Error ? e.message : "發送失敗");
     } finally {
@@ -65,6 +75,7 @@ export function HostGameClient({ params }: Props) {
       const { error: upErr } = await supabase.from("games").update({ phase: nextPhase }).eq("id", game.id);
       if (upErr) throw upErr;
       await reload();
+      await triggerRefresh();
     } catch (e) {
       alert(e instanceof Error ? e.message : "更新失敗");
     } finally {

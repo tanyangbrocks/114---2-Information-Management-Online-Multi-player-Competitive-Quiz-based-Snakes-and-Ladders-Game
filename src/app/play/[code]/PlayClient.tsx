@@ -53,6 +53,15 @@ export function PlayClient({ params }: Props) {
 
   const self = useMemo(() => players.find((p) => p.id === playerId), [players, playerId]);
 
+  const triggerRefresh = async () => {
+    if (!gameId) return;
+    await supabase.channel(`game-room:${gameId}`).send({
+      type: "broadcast",
+      event: "refresh",
+      payload: {}
+    });
+  };
+
   const joinGame = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!gameId || !joinName.trim()) return;
@@ -75,6 +84,7 @@ export function PlayClient({ params }: Props) {
       if (!data?.id) throw new Error("加入失敗");
       setPlayerId(gameId, String(data.id));
       await reload();
+      await triggerRefresh();
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : "加入失敗");
     } finally {
@@ -111,6 +121,7 @@ export function PlayClient({ params }: Props) {
         .eq("id", self.id);
       if (upErr) throw upErr;
       await reload();
+      await triggerRefresh();
     } catch (err) {
       alert(err instanceof Error ? err.message : "送出失敗");
     } finally {
