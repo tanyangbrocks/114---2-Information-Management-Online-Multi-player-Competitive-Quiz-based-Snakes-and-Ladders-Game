@@ -14,67 +14,91 @@ export function useGameRealtime(gameId: string | null) {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (silent = false) => {
     if (!gameId) return;
-    setStatus("loading");
+    if (!silent) setStatus("loading");
     setError(null);
-    const gRes = await supabase.from("games").select("*").eq("id", gameId).maybeSingle();
-    if (gRes.error) {
-      setError(gRes.error.message);
+
+    try {
+      const gRes = await supabase.from("games").select("*").eq("id", gameId).maybeSingle();
+      if (gRes.error) throw gRes.error;
+      
+      if (!gRes.data) {
+        setGame(null);
+        setPlayers([]);
+        setStatus("error");
+        setError("找不到場次");
+        return;
+      }
+
+      const pRes = await supabase.from("players").select("*").eq("game_id", gameId).order("created_at");
+      if (pRes.error) throw pRes.error;
+
+      setGame(mapGameRow(gRes.data as Record<string, unknown>));
+      setPlayers((pRes.data ?? []).map((r) => mapPlayerRow(r as Record<string, unknown>)));
+      setStatus("ready");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "載入失敗");
       setStatus("error");
-      return;
     }
-    if (!gRes.data) {
-      setGame(null);
-      setPlayers([]);
-      setStatus("error");
-      setError("找不到場次");
-      return;
-    }
-    const pRes = await supabase.from("players").select("*").eq("game_id", gameId).order("created_at");
-    if (pRes.error) {
-      setError(pRes.error.message);
-      setStatus("error");
-      return;
-    }
-    setGame(mapGameRow(gRes.data as Record<string, unknown>));
-    setPlayers((pRes.data ?? []).map((r) => mapPlayerRow(r as Record<string, unknown>)));
-    setStatus("ready");
   }, [gameId, supabase]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
+  // 定期輪詢 (Polling) 作為最終保險，解決 Realtime 可能失效的問題
   useEffect(() => {
     if (!gameId) return;
+    const interval = setInterval(() => {
+      void reload(true); // 使用 silent 模式在背景更新，避免畫面閃爍
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [gameId, reload]);
 
-    const channel = supabase
-      .channel(`game-room:${gameId}`)
+  // 建立並快取頻道實例
+  const channel = useMemo(() => {
+    if (!gameId) return null;
+    return supabase.channel(`game-room:${gameId}`);
+  }, [gameId, supabase]);
+
+  // 提供一個發送訊號的函式
+  const sendSignal = useCallback(async () => {
+    if (!channel) return;
+    await channel.send({
+      type: "broadcast",
+      event: "refresh",
+      payload: {}
+    });
+  }, [channel]);
+
+  useEffect(() => {
+    if (!channel || !gameId) return;
+
+    channel
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "games", filter: `id=eq.${gameId}` },
         () => {
-          void reload();
+          void reload(true);
         }
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "players", filter: `game_id=eq.${gameId}` },
         () => {
-          void reload();
+          void reload(true);
         }
       )
-      // 新增：監聽廣播事件作為備援，確保即時性
       .on("broadcast", { event: "refresh" }, () => {
-        void reload();
+        void reload(true);
       })
       .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [gameId, reload, supabase]);
+  }, [gameId, channel, reload, supabase]);
 
-  return { game, players, status, error, reload };
+  return { game, players, status, error, reload, sendSignal };
 }

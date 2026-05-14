@@ -18,7 +18,7 @@ export function HostGameClient({ params }: Props) {
   const searchParams = useSearchParams();
   const hostSecret = searchParams.get("hostSecret") ?? "";
 
-  const { game, players, status, error, reload } = useGameRealtime(gameId);
+  const { game, players, status, error, reload, sendSignal } = useGameRealtime(gameId);
   const supabase = useMemo(() => createClient(), []);
   const [busy, setBusy] = useState<"send" | "next" | null>(null);
 
@@ -26,14 +26,7 @@ export function HostGameClient({ params }: Props) {
   const inviteUrl =
     typeof window !== "undefined" && game ? `${window.location.origin}/play/${game.invite_code}` : "";
 
-  // 主動發送廣播，通知所有連線者重新整理資料
-  const triggerRefresh = async () => {
-    await supabase.channel(`game-room:${gameId}`).send({
-      type: "broadcast",
-      event: "refresh",
-      payload: {}
-    });
-  };
+  // 移除了手動建立頻道的邏輯，改用 Hook 提供的 sendSignal
 
   const sendQuestion = async () => {
     if (!game) return;
@@ -58,7 +51,7 @@ export function HostGameClient({ params }: Props) {
         .eq("id", game.id);
       if (upErr) throw upErr;
       await reload();
-      await triggerRefresh();
+      await sendSignal();
     } catch (e) {
       alert(e instanceof Error ? e.message : "發送失敗");
     } finally {
@@ -75,7 +68,7 @@ export function HostGameClient({ params }: Props) {
       const { error: upErr } = await supabase.from("games").update({ phase: nextPhase }).eq("id", game.id);
       if (upErr) throw upErr;
       await reload();
-      await triggerRefresh();
+      await sendSignal();
     } catch (e) {
       alert(e instanceof Error ? e.message : "更新失敗");
     } finally {

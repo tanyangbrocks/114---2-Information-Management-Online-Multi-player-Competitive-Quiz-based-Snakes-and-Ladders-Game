@@ -47,20 +47,13 @@ export function PlayClient({ params }: Props) {
     };
   }, [code, supabase]);
 
-  const { game, players, status, error, reload } = useGameRealtime(gameId);
+  const { game, players, status, error, reload, sendSignal } = useGameRealtime(gameId);
   const playerId = usePlayerSessionStore((s) => (gameId ? s.playerByGame[gameId] : undefined));
   const setPlayerId = usePlayerSessionStore((s) => s.setPlayerId);
 
   const self = useMemo(() => players.find((p) => p.id === playerId), [players, playerId]);
 
-  const triggerRefresh = async () => {
-    if (!gameId) return;
-    await supabase.channel(`game-room:${gameId}`).send({
-      type: "broadcast",
-      event: "refresh",
-      payload: {}
-    });
-  };
+  // 移除了手動建立頻道的邏輯，改用 Hook 提供的 sendSignal
 
   const joinGame = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,7 +77,7 @@ export function PlayClient({ params }: Props) {
       if (!data?.id) throw new Error("加入失敗");
       setPlayerId(gameId, String(data.id));
       await reload();
-      await triggerRefresh();
+      await sendSignal();
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : "加入失敗");
     } finally {
@@ -121,7 +114,7 @@ export function PlayClient({ params }: Props) {
         .eq("id", self.id);
       if (upErr) throw upErr;
       await reload();
-      await triggerRefresh();
+      await sendSignal();
     } catch (err) {
       alert(err instanceof Error ? err.message : "送出失敗");
     } finally {
