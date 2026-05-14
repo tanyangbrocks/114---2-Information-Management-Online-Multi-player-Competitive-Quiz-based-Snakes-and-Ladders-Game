@@ -170,6 +170,14 @@ export function PlayClient({ params }: Props) {
     }
   }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, supabase]);
 
+  // boardPlayers 只在棋盤可見時才更新，確保動畫在玩家看到棋盤後才播放
+  // movedRound 改變代表結算完成，棋盤可見；phase 非遮蓋狀態時也即時更新
+  const [boardPlayers, setBoardPlayers] = useState(players);
+  useEffect(() => {
+    // 以 movedRound 為觸發：結算移動完成後，棋盤變為可見，此時更新棋盤資料
+    setBoardPlayers(players);
+  }, [movedRound]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (lookupError) {
     return (
       <main className="mx-auto max-w-lg px-4 py-12">
@@ -241,17 +249,6 @@ export function PlayClient({ params }: Props) {
   // 是否在等待結算：在結算階段且玩家尚未移動完畢
   const isWaitingSettle = game.phase === "settle" && movedRound !== game.current_round;
   const podium = rankPlayers(players);
-
-  // 棋盤可見狀態：所有 modal 都關閉時，棋盤才是可見的
-  const boardVisible = !needsAnswer && !isWaitingReveal && !isShowingReveal && !isWaitingSettle;
-
-  // boardPlayers 只在棋盤可見時才更新，確保動畫在玩家看到棋盤後才播放
-  const [boardPlayers, setBoardPlayers] = useState(players);
-  useEffect(() => {
-    if (boardVisible) {
-      setBoardPlayers(players);
-    }
-  }, [players, boardVisible]);
 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 lg:flex-row lg:items-start">
