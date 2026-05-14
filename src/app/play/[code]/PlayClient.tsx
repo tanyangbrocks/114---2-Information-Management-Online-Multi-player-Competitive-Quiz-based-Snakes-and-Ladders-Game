@@ -11,7 +11,7 @@ import { calculateAvailableSkills, countSuits, type AvailableSkill } from "@/lib
 import { castSkill } from "@/app/actions/skills";
 import { respondToSkillCounter } from "@/app/actions/resolveSkills";
 import { Loader2, Sparkles, User, Radio, SkipForward } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, use } from "react";
+import { useEffect, useMemo, useRef, useState, use, useCallback } from "react";
 import { moveBySteps } from "@/lib/game/boardEngine";
 
 
@@ -200,7 +200,7 @@ export function PlayClient({ params }: Props) {
     }
   }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, sendMoveDone, supabase, performMove]);
 
-  const performMove = async (pos: number, stars: number, heartToConsume?: string) => {
+  const performMove = useCallback(async (pos: number, stars: number, heartToConsume?: string) => {
     if (!self || !game) return;
     try {
       if (heartToConsume) {
@@ -220,7 +220,7 @@ export function PlayClient({ params }: Props) {
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [self, game, supabase, reload, sendMoveDone, sendSignal]);
 
   // boardPlayers 只在棋盤可見時才更新，確保動畫在玩家看到棋盤後才播放
   const [boardPlayers, setBoardPlayers] = useState(players);

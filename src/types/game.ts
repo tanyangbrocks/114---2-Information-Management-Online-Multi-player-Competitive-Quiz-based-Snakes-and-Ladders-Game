@@ -28,7 +28,7 @@ export type SkillAction = {
   target_player_id?: string;
   consumed_cards: string[]; // 卡牌 ID 陣列
   created_at: string;
-  status: "pending" | "resolved" | "cancelled";
+  status: "pending" | "resolved" | "cancelled" | "waiting_counter" | "ready";
 };
 
 export type GameRow = {
