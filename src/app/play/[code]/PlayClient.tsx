@@ -157,26 +157,37 @@ export function PlayClient({ params }: Props) {
       const newStars = self.stars + move.starsGained;
       const roundNum = game.current_round;
 
-      void supabase
-        .from("players")
-        .update({ position: move.position, stars: newStars })
-        .eq("id", self.id)
-        .then(() => {
-          // 移動完畢後立即關閉「準備移動中」modal
-          setMovedRound(roundNum);
-          void reload();
-          void sendSignal();
-        });
+      // 用 async IIFE 確保正確的執行順序：先更新DB → 等 reload 完成 → 再關閉 modal
+      void (async () => {
+        const { error: upErr } = await supabase
+          .from("players")
+          .update({ position: move.position, stars: newStars })
+          .eq("id", self.id);
+        if (upErr) return;
+        // 先 reload，確保 players state 已包含最新位置
+        await reload();
+        // 再關閉 modal：此時 boardPlayers 會更新到已含新位置的 players
+        setMovedRound(roundNum);
+        void sendSignal();
+      })();
     }
   }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, supabase]);
 
   // boardPlayers 只在棋盤可見時才更新，確保動畫在玩家看到棋盤後才播放
-  // movedRound 改變代表結算完成，棋盤可見；phase 非遮蓋狀態時也即時更新
   const [boardPlayers, setBoardPlayers] = useState(players);
+
+  // 結算移動完成後（movedRound 改變），此時 players 已包含新位置，觸發棋盤更新與動畫
   useEffect(() => {
-    // 以 movedRound 為觸發：結算移動完成後，棋盤變為可見，此時更新棋盤資料
     setBoardPlayers(players);
   }, [movedRound]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 在非遮蓋階段（回合間、大廳、結束）也即時同步棋盤顯示
+  useEffect(() => {
+    const phase = game?.phase;
+    if (phase === "between_rounds" || phase === "lobby" || phase === "finished") {
+      setBoardPlayers(players);
+    }
+  }, [game?.phase, players]);
 
   if (lookupError) {
     return (
