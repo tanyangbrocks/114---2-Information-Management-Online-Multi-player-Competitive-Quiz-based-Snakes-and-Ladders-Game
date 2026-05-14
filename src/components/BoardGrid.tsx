@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { ESCALATORS, EELS } from "@/lib/game/boardEngine";
 import { motion, useAnimation } from "framer-motion";
 
-const PLAYER_PALETTE = ["#0ea5e9", "#6366f1", "#f97316", "#22c55e", "#e11d48", "#a855f7"];
+
 
 /** 計算格子在 10x10 棋盤上的百分比座標 (x, y)，回傳值為 0-100 */
 function getCellCoords(n: number) {
@@ -20,15 +20,10 @@ function getCellCoords(n: number) {
 }
 
 export function BoardGrid({ players, selfId }: Props) {
-  const { buildZigzagGrid, cellKind } = useSnakeLadderBoard();
+  const { buildZigzagGrid } = useSnakeLadderBoard();
   const grid = buildZigzagGrid();
 
-  const connectors = useMemo(() => {
-    return [
-      ...ESCALATORS.map(([from, to]) => ({ from, to, type: "escalator" as const })),
-      ...EELS.map(([from, to]) => ({ from, to, type: "eel" as const }))
-    ];
-  }, []);
+
 
   return (
     <div className="relative w-full max-w-xl select-none aspect-square">

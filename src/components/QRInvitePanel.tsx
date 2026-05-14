@@ -2,7 +2,7 @@
 
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
-import { QrCode } from "lucide-react";
+import { QrCode, Loader2 } from "lucide-react";
 
 type Props = {
   inviteUrl: string;
