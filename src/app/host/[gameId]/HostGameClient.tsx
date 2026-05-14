@@ -32,19 +32,10 @@ export function HostGameClient({ params }: Props) {
     if (!game) return;
     setBusy("send");
     try {
-      let nextRound = game.current_round;
       const epoch = game.question_epoch + 1;
-      if (game.phase !== "question") {
-        if (nextRound >= game.round_count) {
-          alert("所有回合已完成，請使用「進入下個回合」結束或結算。");
-          return;
-        }
-        nextRound += 1;
-      }
       const { error: upErr } = await supabase
         .from("games")
         .update({
-          current_round: nextRound,
           phase: "question",
           question_epoch: epoch
         })
@@ -65,7 +56,16 @@ export function HostGameClient({ params }: Props) {
     try {
       const finished = game.current_round >= game.round_count;
       const nextPhase = finished ? "finished" : "between_rounds";
-      const { error: upErr } = await supabase.from("games").update({ phase: nextPhase }).eq("id", game.id);
+      const nextRound = finished ? game.current_round : game.current_round + 1;
+      
+      const { error: upErr } = await supabase
+        .from("games")
+        .update({ 
+          phase: nextPhase,
+          current_round: nextRound
+        })
+        .eq("id", game.id);
+      
       if (upErr) throw upErr;
       await reload();
       await sendSignal();
