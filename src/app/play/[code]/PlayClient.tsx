@@ -6,7 +6,7 @@ import { useGameRealtime } from "@/hooks/useGameRealtime";
 import { rankPlayers } from "@/lib/game/ranking";
 import { createClient } from "@/lib/supabase/browser";
 import { usePlayerSessionStore } from "@/store/playerSessionStore";
-import { type QuizChoice } from "@/types/game";
+import { type QuizChoice, type GameCard } from "@/types/game";
 import { calculateAvailableSkills, countSuits, type AvailableSkill } from "@/lib/game/skillEngine";
 import { castSkill } from "@/app/actions/skills";
 import { respondToSkillCounter } from "@/app/actions/resolveSkills";
@@ -170,7 +170,7 @@ export function PlayClient({ params }: Props) {
     } else {
       setPendingCounter(null);
     }
-  }, [skillActions, self?.id]);
+  }, [skillActions, self]);
 
   // 處理移動邏輯 (當主辦方進入 settle 階段)
   useEffect(() => {
@@ -198,7 +198,7 @@ export function PlayClient({ params }: Props) {
 
       void performMove(move.position, move.starsGained);
     }
-  }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, sendMoveDone, supabase]);
+  }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, sendMoveDone, supabase, performMove]);
 
   const performMove = async (pos: number, stars: number, heartToConsume?: string) => {
     if (!self || !game) return;
