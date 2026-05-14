@@ -506,7 +506,7 @@ export function PlayClient({ params }: Props) {
         {isSkillPhase && !hasActedSkill && (
           <div className="fixed inset-0 z-[70] pointer-events-none">
             <div className={`absolute inset-0 bg-black/20 transition-opacity pointer-events-auto ${isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsDrawerOpen(false)} />
-            <motion.div initial={{ y: "100%" }} animate={{ y: isDrawerOpen ? "0%" : "93%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="absolute bottom-0 left-0 right-0 bg-milky-white rounded-t-[4rem] border-t-8 border-white shadow-2xl pointer-events-auto flex flex-col">
+            <motion.div initial={{ y: "100%" }} animate={{ y: isDrawerOpen ? "0%" : "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="absolute bottom-0 left-0 right-0 bg-milky-white rounded-t-[4rem] border-t-8 border-white shadow-2xl pointer-events-auto flex flex-col">
               <div className="flex justify-center py-6 cursor-pointer group" onClick={() => setIsDrawerOpen(!isDrawerOpen)}><div className="w-20 h-2 bg-milky-brown/10 rounded-full group-hover:bg-milky-brown/30" /></div>
               <div className="px-8 pb-16 overflow-y-auto max-h-[80vh]">
                 <div className="mb-10 flex items-end justify-between">

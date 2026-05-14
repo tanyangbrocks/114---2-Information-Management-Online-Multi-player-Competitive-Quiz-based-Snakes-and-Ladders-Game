@@ -82,9 +82,24 @@ export async function castSkill(
     });
 
     if (insertErr) {
+      // 如果是因為 metadata 欄位不存在 (schema cache 錯誤)，嘗試不帶 metadata 再次寫入
+      if (insertErr.message.toLowerCase().includes("metadata")) {
+        const { error: retryErr } = await supabase.from("skill_actions").insert({
+          game_id: gameId,
+          round,
+          player_id: playerId,
+          action_type: actionType,
+          target_player_id: targetPlayerId || null,
+          consumed_cards: consumedCards,
+          status: "pending"
+        });
+        if (!retryErr) return { success: true };
+        return { success: false, error: "寫入技能動作失敗: " + retryErr.message };
+      }
+
       // 補償機制：嘗試還原卡片
       await supabase.from("players").update({ cards }).eq("id", playerId);
-      return { success: false, error: "寫入技能動作失敗 (請確認資料表 skill_actions 是否存在): " + insertErr.message };
+      return { success: false, error: "寫入技能動作失敗: " + insertErr.message };
     }
 
     return { success: true };
