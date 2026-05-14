@@ -136,33 +136,32 @@ export function PlayClient({ params }: Props) {
     }
   }, [game?.phase, game?.current_round, game?.rounds_config, self, gameId, drawForSlot, reload, sendSignal, supabase]);
 
+  // 用 ref 記錄「已結算的回合編號」，防止 settle useEffect 因 self 改變而無限觸發
+  const settledRoundRef = useRef<number>(-1);
+
   // 處理移動邏輯 (當主辦方進入 settle 階段)
   useEffect(() => {
     if (game?.phase === "settle" && self && gameId) {
-      const card = self.cards.find((c) => c.round === game.current_round);
-      if (card) {
-        // 檢查是否已經移動過（這裡用一個簡單的邏輯：如果位置已經根據這張卡算過了）
-        // 為了簡單起見，我們比對最後一次移動的時間或狀態，或者直接檢查 phase
-        // 這裡我們暫且假設 settle 階段只會觸發一次移動
-        const move = moveBySteps(self.position, card.points);
-        const newStars = self.stars + move.starsGained;
+      // 如果這個回合已經結算過，直接跳過
+      if (settledRoundRef.current === game.current_round) return;
 
-        // 我們需要確保這個更新只發生一次
-        // 這裡透過檢查資料庫中的 position 是否已經是 move.position 來防重 (雖然不完美，但在此架構下堪用)
-        if (self.position !== move.position || self.stars !== newStars) {
-          void supabase
-            .from("players")
-            .update({
-              position: move.position,
-              stars: newStars
-            })
-            .eq("id", self.id)
-            .then(() => {
-              void reload();
-              void sendSignal();
-            });
-        }
-      }
+      const card = self.cards.find((c) => c.round === game.current_round);
+      if (!card) return;
+
+      // 先標記為「已結算」，防止重複執行
+      settledRoundRef.current = game.current_round;
+
+      const move = moveBySteps(self.position, card.points);
+      const newStars = self.stars + move.starsGained;
+
+      void supabase
+        .from("players")
+        .update({ position: move.position, stars: newStars })
+        .eq("id", self.id)
+        .then(() => {
+          void reload();
+          void sendSignal();
+        });
     }
   }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, supabase]);
 
@@ -378,7 +377,6 @@ export function PlayClient({ params }: Props) {
           </ul>
         )}
       </aside>
-      <QuizModal open={Boolean(needsAnswer)} round={game.current_round} busy={answerBusy} onPick={handleAnswer} />
     </main>
   );
 }

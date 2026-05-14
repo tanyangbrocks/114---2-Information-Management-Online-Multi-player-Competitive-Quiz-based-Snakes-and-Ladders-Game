@@ -11,7 +11,7 @@ create table if not exists public.games (
   rounds_config jsonb not null,
   current_round int not null default 0,
   phase text not null default 'lobby'
-    check (phase in ('lobby', 'question', 'between_rounds', 'finished')),
+    check (phase in ('lobby', 'question', 'reveal', 'settle', 'between_rounds', 'finished')),
   question_epoch bigint not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
