@@ -27,7 +27,7 @@ export type SkillAction = {
   action_type: SkillActionType;
   target_player_id?: string;
   consumed_cards: string[]; // 卡牌 ID 陣列
-  metadata?: any;
+  metadata?: Record<string, unknown>;
   created_at: string;
   status: "pending" | "resolved" | "cancelled" | "waiting_counter" | "ready";
 };

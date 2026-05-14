@@ -9,7 +9,7 @@ import { usePlayerSessionStore } from "@/store/playerSessionStore";
 import { type QuizChoice, type GameCard } from "@/types/game";
 import { calculateAvailableSkills, countSuits, getAvailableCards, type AvailableSkill } from "@/lib/game/skillEngine";
 import { MotionWrapper } from "@/components/MotionWrapper";
-import { Loader2, Sparkles, User, Radio, SkipForward, Heart, CheckCircle2, MessageCircle } from "lucide-react";
+import { Loader2, Sparkles, User, SkipForward, Heart, CheckCircle2, MessageCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, use, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { moveBySteps } from "@/lib/game/boardEngine";
@@ -350,6 +350,7 @@ export function PlayClient({ params }: Props) {
           </div>
           <form className="space-y-5" onSubmit={joinGame}>
             <input required value={joinName} onChange={(e) => setJoinName(e.target.value)} className="w-full rounded-2xl border-2 border-milky-beige bg-white/50 px-4 py-3 text-milky-brown outline-none" placeholder="輸入您的名字..." />
+            {joinError && <p className="text-xs font-bold text-milky-accent animate-pulse">{joinError}</p>}
             <button type="submit" disabled={joinBusy} className="pudding-button-primary w-full shadow-milky-apricot/20">{joinBusy ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : "開始冒險"}</button>
           </form>
         </MotionWrapper>
