@@ -8,7 +8,7 @@ import { rankPlayers } from "@/lib/game/ranking";
 import { createClient } from "@/lib/supabase/browser";
 import { usePlayerSessionStore } from "@/store/playerSessionStore";
 import type { QuizChoice } from "@/types/game";
-import { Loader2, Sparkles, User } from "lucide-react";
+import { Loader2, Sparkles, User, Radio, SkipForward } from "lucide-react";
 import { useEffect, useMemo, useState, use } from "react";
 import { moveBySteps } from "@/lib/game/boardEngine";
 
@@ -236,6 +236,7 @@ export function PlayClient({ params }: Props) {
   const isShowingReveal = game.phase === "reveal";
   // 是否在等待結算：在結算階段（或剛抽完卡）
   const isWaitingSettle = game.phase === "settle";
+  const podium = rankPlayers(players);
 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 lg:flex-row lg:items-start">
