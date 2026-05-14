@@ -116,10 +116,10 @@ export function calculateAvailableSkills(cards: GameCard[]): AvailableSkill[] {
   if (canAfford(counts, 0, 2, 0, 0)) {
     skills.push({ actionType: "C-2", requiresTarget: true, costDescription: "2C" });
   }
-  // H-1: 消耗 1H
-  if (canAfford(counts, 0, 0, 1, 0)) {
-    skills.push({ actionType: "H-1", requiresTarget: false, costDescription: "1H" });
-  }
+  // H-1: 消耗 1H (用戶反應此為被動，暫不列入主動發動)
+  // if (canAfford(counts, 0, 0, 1, 0)) {
+  //   skills.push({ actionType: "H-1", requiresTarget: false, costDescription: "1H" });
+  // }
   // U-1: 消耗 3 同花色
   if (canAffordU1(counts)) {
     skills.push({ actionType: "U-1", requiresTarget: false, costDescription: "3 同色" });

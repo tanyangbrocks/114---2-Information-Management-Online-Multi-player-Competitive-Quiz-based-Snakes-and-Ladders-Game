@@ -2,19 +2,19 @@
 
 import { createClient } from "@supabase/supabase-js";
 import type { GameCard } from "@/types/game";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!; 
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { countSuits } from "@/lib/game/skillEngine";
 
 export async function resolveSkillsAndStartSettle(gameId: string, round: number) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
   // 1. 取得所有待處理技能
   const { data: actions, error: actionsErr } = await supabase
     .from("skill_actions")
     .select("*")
     .eq("game_id", gameId)
     .eq("round", round)
-    .eq("status", "pending");
+    .in("status", ["pending", "ready"]);
 
   if (actionsErr) throw new Error("讀取技能佇列失敗");
 
@@ -55,6 +55,25 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
     const caster = playerMap.get(action.player_id);
     const target = action.target_player_id ? playerMap.get(action.target_player_id) : null;
     if (!caster) continue;
+
+    // --- 技能反制偵測 (Diamond Counter) ---
+    // 只有針對型技能 (有 target) 且該技能尚未被標記為 'waiting_counter' 或 'ready'
+    if (target && action.status === "pending") {
+      const tCards = target.cards as GameCard[];
+      const availableCards = tCards.filter(c => !c.is_used);
+      const suits = countSuits(availableCards);
+      if (suits.D >= 2) {
+        // 目標有 2 張菱形，觸發反制提示
+        await supabase
+          .from("skill_actions")
+          .update({ status: "waiting_counter" })
+          .eq("id", action.id);
+        
+        // 暫停後續結算，讓 Host 重新整理或等待
+        return { success: true, waitingForCounter: true, actionId: action.id, targetName: target.name };
+      }
+    }
+    // 如果是從反制狀態回來的，或是本來就沒反制，繼續執行
 
     // S-1: 指定目標，隨機丟棄其一張未使用的手牌
     if (action.action_type === "S-1" && target) {
@@ -101,6 +120,58 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
   // 6. 更新遊戲狀態到 settle
   const { error: gameErr } = await supabase.from("games").update({ phase: "settle" }).eq("id", gameId);
   if (gameErr) throw new Error("進入結算階段失敗");
+
+  return { success: true };
+}
+
+export async function respondToSkillCounter(
+  actionId: string,
+  useCounter: boolean
+) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  // 1. 取得該行動與玩家
+  const { data: action, error: aErr } = await supabase
+    .from("skill_actions")
+    .select("*")
+    .eq("id", actionId)
+    .single();
+
+  if (aErr || !action) throw new Error("找不到行動");
+
+  const { data: target, error: pErr } = await supabase
+    .from("players")
+    .select("*")
+    .eq("id", action.target_player_id)
+    .single();
+
+  if (pErr || !target) throw new Error("找不到目標玩家");
+
+  if (useCounter) {
+    // 消耗 2 張菱形並取消行動
+    const cards = target.cards as GameCard[];
+    let consumedCount = 0;
+    const updatedCards = cards.map(c => {
+      if (!c.is_used && c.suit === 'D' && consumedCount < 2) {
+        consumedCount++;
+        return { ...c, is_used: true };
+      }
+      return c;
+    });
+
+    if (consumedCount < 2) throw new Error("菱形不足");
+
+    await supabase.from("players").update({ cards: updatedCards }).eq("id", target.id);
+    await supabase.from("skill_actions").update({ status: "cancelled" }).eq("id", actionId);
+  } else {
+    // 不使用反制，將行動標記為 'pending' (但這次要標註已詢問過，避免無限迴圈)
+    // 這裡我們暫時用一個技巧：直接改回 pending 但由 resolveSkills 判斷
+    // 或者乾脆加一個 flag 欄位。為了不改 Schema，我們這裡改為 'resolved' 的前置狀態？
+    // 簡單做法：將 status 設為 'ready'
+    await supabase.from("skill_actions").update({ status: "ready" }).eq("id", actionId);
+  }
 
   return { success: true };
 }

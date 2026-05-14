@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/browser";
 import { mapGameRow, mapPlayerRow } from "@/lib/game/dbMappers";
-import type { GameRow, PlayerRow } from "@/types/game";
+import type { GameRow, PlayerRow, SkillAction } from "@/types/game";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Status = "idle" | "loading" | "ready" | "error";
@@ -13,6 +13,7 @@ export function useGameRealtime(gameId: string | null) {
   const supabase = useMemo(() => createClient(), []);
   const [game, setGame] = useState<GameRow | null>(null);
   const [players, setPlayers] = useState<PlayerRow[]>([]);
+  const [skillActions, setSkillActions] = useState<SkillAction[]>([]);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -39,8 +40,12 @@ export function useGameRealtime(gameId: string | null) {
       const pRes = await supabase.from("players").select("*").eq("game_id", gameId).order("created_at");
       if (pRes.error) throw pRes.error;
 
+      const aRes = await supabase.from("skill_actions").select("*").eq("game_id", gameId).eq("round", gRes.data.current_round);
+      if (aRes.error) throw aRes.error;
+
       setGame(mapGameRow(gRes.data as Record<string, unknown>));
       setPlayers((pRes.data ?? []).map((r) => mapPlayerRow(r as Record<string, unknown>)));
+      setSkillActions(aRes.data ?? []);
       setStatus("ready");
     } catch (err) {
       setError(err instanceof Error ? err.message : "載入失敗");
@@ -110,6 +115,13 @@ export function useGameRealtime(gameId: string | null) {
           void reload(true);
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "skill_actions", filter: `game_id=eq.${gameId}` },
+        () => {
+          void reload(true);
+        }
+      )
       .on("broadcast", { event: "refresh" }, () => {
         void reload(true);
       })
@@ -125,5 +137,5 @@ export function useGameRealtime(gameId: string | null) {
     };
   }, [gameId, channel, reload, supabase]);
 
-  return { game, players, status, error, reload, sendSignal, sendMoveDone, onMoveDone };
+  return { game, players, skillActions, status, error, reload, sendSignal, sendMoveDone, onMoveDone };
 }

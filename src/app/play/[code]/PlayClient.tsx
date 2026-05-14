@@ -9,6 +9,7 @@ import { usePlayerSessionStore } from "@/store/playerSessionStore";
 import { type QuizChoice } from "@/types/game";
 import { calculateAvailableSkills, countSuits, type AvailableSkill } from "@/lib/game/skillEngine";
 import { castSkill } from "@/app/actions/skills";
+import { respondToSkillCounter } from "@/app/actions/resolveSkills";
 import { Loader2, Sparkles, User, Radio, SkipForward } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, use } from "react";
 import { moveBySteps } from "@/lib/game/boardEngine";
@@ -48,7 +49,7 @@ export function PlayClient({ params }: Props) {
     };
   }, [code, supabase]);
 
-  const { game, players, status, error, reload, sendSignal, sendMoveDone } = useGameRealtime(gameId);
+  const { game, players, skillActions, status, error, reload, sendSignal, sendMoveDone } = useGameRealtime(gameId);
   const playerId = usePlayerSessionStore((s) => (gameId ? s.playerByGame[gameId] : undefined));
   const setPlayerId = usePlayerSessionStore((s) => s.setPlayerId);
 
@@ -152,7 +153,24 @@ export function PlayClient({ params }: Props) {
   useEffect(() => {
     setHasActedSkill(false);
     setSelectedTarget("");
+    setPendingCounter(null);
+    setSnakeTarget(null);
   }, [game?.current_round]);
+
+  // 反制相關狀態
+  const [pendingCounter, setPendingCounter] = useState<{ id: string, action_type: string } | null>(null);
+  const [snakeTarget, setSnakeTarget] = useState<{ position: number, starsGained: number, cards: GameCard[] } | null>(null);
+
+  // 監聽是否有需要自己反制的技能
+  useEffect(() => {
+    if (!self || !skillActions) return;
+    const counterAction = skillActions.find(a => a.target_player_id === self.id && a.status === 'waiting_counter');
+    if (counterAction) {
+      setPendingCounter({ id: counterAction.id, action_type: counterAction.action_type });
+    } else {
+      setPendingCounter(null);
+    }
+  }, [skillActions, self?.id]);
 
   // 處理移動邏輯 (當主辦方進入 settle 階段)
   useEffect(() => {
@@ -167,26 +185,42 @@ export function PlayClient({ params }: Props) {
       settledRoundRef.current = game.current_round;
 
       const move = moveBySteps(self.position, card.points);
-      const newStars = self.stars + move.starsGained;
-      const roundNum = game.current_round;
+      
+      // 偵測是否遇到蛇 (掉落步數 > 0)
+      if (move.position < (self.position + card.points)) {
+        const hearts = self.cards.filter(c => !c.is_used && c.suit === 'H');
+        if (hearts.length > 0) {
+          // 彈出紅心抵銷提示
+          setSnakeTarget({ position: move.position, starsGained: move.starsGained, cards: hearts });
+          return;
+        }
+      }
 
-      // 用 async IIFE 確保正確的執行順序：先更新DB → 等 reload 完成 → 再關閉 modal
-      void (async () => {
-        const { error: upErr } = await supabase
-          .from("players")
-          .update({ position: move.position, stars: newStars })
-          .eq("id", self.id);
-        if (upErr) return;
-        // 先 reload，確保 players state 已包含最新位置
-        await reload();
-        // 再關閉 modal：此時 boardPlayers 會更新到已含新位置的 players
-        setMovedRound(roundNum);
-        // 廣播移動完成訊息給主辦方
-        void sendMoveDone(self.id, self.name, move.position);
-        void sendSignal();
-      })();
+      void performMove(move.position, move.starsGained);
     }
   }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, sendMoveDone, supabase]);
+
+  const performMove = async (pos: number, stars: number, heartToConsume?: string) => {
+    if (!self || !game) return;
+    try {
+      if (heartToConsume) {
+        const newCards = self.cards.map(c => c.id === heartToConsume ? { ...c, is_used: true } : c);
+        await supabase.from("players").update({ cards: newCards }).eq("id", self.id);
+      }
+      
+      const { error: upErr } = await supabase
+        .from("players")
+        .update({ position: pos, stars: self.stars + stars })
+        .eq("id", self.id);
+      if (upErr) throw upErr;
+      await reload();
+      setMovedRound(game.current_round);
+      void sendMoveDone(self.id, self.name, pos);
+      void sendSignal();
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // boardPlayers 只在棋盤可見時才更新，確保動畫在玩家看到棋盤後才播放
   const [boardPlayers, setBoardPlayers] = useState(players);
@@ -276,6 +310,7 @@ export function PlayClient({ params }: Props) {
   const isSkillPhase = game.phase === "skill";
   // 是否在等待結算：在結算階段且玩家尚未移動完畢
   const isWaitingSettle = game.phase === "settle" && movedRound !== game.current_round;
+  const isCounterPhase = !!pendingCounter || !!snakeTarget;
   const podium = rankPlayers(players);
 
   // 技能相關變數
@@ -333,9 +368,69 @@ export function PlayClient({ params }: Props) {
     <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 lg:flex-row lg:items-start">
       <section className="flex-1 space-y-4">
         {/* 主要狀態提示視窗 */}
-        {(needsAnswer || isWaitingReveal || isShowingReveal || isSkillPhase || isWaitingSettle) && (
+        {(needsAnswer || isWaitingReveal || isShowingReveal || isSkillPhase || isWaitingSettle || isCounterPhase) && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
             <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-8 shadow-2xl">
+              {isCounterPhase && (
+                <div className="space-y-6">
+                  <div className="text-center">
+                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+                      <Sparkles className="h-8 w-8" />
+                    </div>
+                    {pendingCounter && (
+                      <>
+                        <h2 className="text-xl font-bold text-slate-900">反制攔截！</h2>
+                        <p className="mt-2 text-slate-500">對手對你發動了 {pendingCounter.action_type}。</p>
+                        <p className="font-bold text-rose-600">是否消耗 2 張菱形抵銷？</p>
+                        <div className="mt-6 flex gap-3">
+                          <button
+                            onClick={() => respondToSkillCounter(pendingCounter.id, true)}
+                            className="flex-1 rounded-xl bg-rose-600 py-3 font-bold text-white shadow-lg"
+                          >
+                            是
+                          </button>
+                          <button
+                            onClick={() => respondToSkillCounter(pendingCounter.id, false)}
+                            className="flex-1 rounded-xl bg-slate-100 py-3 font-bold text-slate-600"
+                          >
+                            否
+                          </button>
+                        </div>
+                      </>
+                    )}
+                    {snakeTarget && (
+                      <>
+                        <h2 className="text-xl font-bold text-slate-900">遭遇電鰻/蛇！</h2>
+                        <p className="mt-2 text-slate-500">你即將掉落。是否消耗 1 張紅心抵銷？</p>
+                        <div className="mt-6 flex gap-3">
+                          <button
+                            onClick={() => {
+                              const hId = snakeTarget.cards[0].id;
+                              setSnakeTarget(null);
+                              const card = self.cards.find((c) => c.round === game.current_round);
+                              performMove(self.position + (card?.points || 0), 0, hId);
+                            }}
+                            className="flex-1 rounded-xl bg-rose-600 py-3 font-bold text-white shadow-lg"
+                          >
+                            是 (消耗紅心)
+                          </button>
+                          <button
+                            onClick={() => {
+                              const pos = snakeTarget.position;
+                              const stars = snakeTarget.starsGained;
+                              setSnakeTarget(null);
+                              performMove(pos, stars);
+                            }}
+                            className="flex-1 rounded-xl bg-slate-100 py-3 font-bold text-slate-600"
+                          >
+                            否 (正常掉落)
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
               {needsAnswer && (
                 <div className="space-y-6">
                   <div className="text-center">

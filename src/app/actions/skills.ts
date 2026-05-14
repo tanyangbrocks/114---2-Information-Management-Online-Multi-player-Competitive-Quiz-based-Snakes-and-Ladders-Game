@@ -4,8 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { SkillActionType, GameCard } from "@/types/game";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!; // 伺服器端建議用 Service Role Key，但暫時用 Anon 搭配 RLS
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export async function castSkill(
   gameId: string,
@@ -15,6 +14,14 @@ export async function castSkill(
   consumedCards: string[],
   targetPlayerId?: string
 ) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error("伺服器設定錯誤：缺少 Supabase 環境變數");
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey);
   // 1. 基本驗證 (確認遊戲狀態是否為 skill 階段)
   const { data: game, error: gameErr } = await supabase
     .from("games")

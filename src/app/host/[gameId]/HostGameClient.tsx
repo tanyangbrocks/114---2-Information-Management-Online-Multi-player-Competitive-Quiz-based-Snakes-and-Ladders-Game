@@ -131,7 +131,10 @@ export function HostGameClient({ params }: Props) {
     if (!game) return;
     setBusy("next");
     try {
-      await resolveSkillsAndStartSettle(game.id, game.current_round);
+      const res = await resolveSkillsAndStartSettle(game.id, game.current_round);
+      if (res.waitingForCounter) {
+        alert(`正在等待玩家 ${res.targetName} 決定是否消耗菱形反制技能...`);
+      }
       await reload();
       await sendSignal();
     } catch (e) {
