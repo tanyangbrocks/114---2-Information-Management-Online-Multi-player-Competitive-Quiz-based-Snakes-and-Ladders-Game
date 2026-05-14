@@ -8,7 +8,8 @@ import { useGameRealtime } from "@/hooks/useGameRealtime";
 import { resolveSkillsAndStartSettle } from "@/app/actions/resolveSkills";
 import { useMemo, useState, useEffect, useRef, use } from "react";
 import { useSearchParams } from "next/navigation";
-import { Loader2, Radio, SkipForward, Trophy, Sparkles } from "lucide-react";
+import { MotionWrapper } from "@/components/MotionWrapper";
+import { Loader2, Radio, SkipForward, Trophy, Sparkles, LayoutDashboard } from "lucide-react";
 
 type Props = {
   params: Promise<{ gameId: string }>;
@@ -172,8 +173,8 @@ export function HostGameClient({ params }: Props) {
 
   if (status === "loading" || status === "idle") {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center text-slate-600">
-        <Loader2 className="h-6 w-6 animate-spin" />
+      <div className="flex min-h-[40vh] items-center justify-center text-milky-brown">
+        <Loader2 className="h-10 w-10 animate-spin opacity-40" />
       </div>
     );
   }
@@ -181,7 +182,9 @@ export function HostGameClient({ params }: Props) {
   if (error || !game) {
     return (
       <main className="mx-auto max-w-3xl px-4 py-10">
-        <p className="text-rose-600">{error ?? "找不到場次"}</p>
+        <div className="pudding-card bg-rose-50 border-rose-100">
+           <p className="text-rose-600 font-bold">{error ?? "找不到場次"}</p>
+        </div>
       </main>
     );
   }
@@ -198,41 +201,46 @@ export function HostGameClient({ params }: Props) {
   const top = rankPlayers(players);
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <main className="mx-auto max-w-6xl px-4 py-8 page-fade-in">
+      <header className="mb-8 flex flex-wrap items-end justify-between gap-6">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Host Console</p>
-          <h1 className="text-2xl font-semibold text-slate-900">主辦後臺</h1>
-          <p className="text-sm text-slate-600">即時監看多名玩家，並透過 Supabase Realtime 同步狀態。</p>
+          <div className="flex items-center gap-2 mb-1">
+             <div className="bg-milky-brown text-white p-1.5 rounded-lg">
+                <LayoutDashboard className="h-4 w-4" />
+             </div>
+             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-milky-brown/40">HOST CONTROL CENTER</p>
+          </div>
+          <h1 className="text-3xl font-black text-milky-brown">冒險主辦後臺</h1>
+          <p className="text-sm font-bold text-milky-brown/40">管理冒險進度與玩家互動</p>
         </div>
         {game.phase === "lobby" ? (
-          <div className="rounded-2xl border border-sky-100 bg-sky-50/50 p-6 text-center shadow-sm">
-            <h3 className="mb-4 text-sm font-medium text-sky-900">人員到齊後，點擊下方按鈕開始第一回合</h3>
+          <MotionWrapper type="bounce" className="pudding-card !bg-milky-apricot/20 border-milky-apricot/30 flex items-center gap-6 py-4 px-8">
+            <h3 className="text-sm font-black text-milky-brown/60 italic">等待人員到齊中...</h3>
             <button
               onClick={startGame}
               disabled={busy !== null}
-              className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-8 py-3 text-sm font-bold text-white shadow-lg shadow-sky-200 transition-all hover:bg-sky-700 active:scale-95 disabled:opacity-50"
+              className="pudding-button-primary shadow-milky-apricot/40 px-10 text-lg"
             >
-              {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : "開始遊戲"}
+              {busy === "next" ? <Loader2 className="h-6 w-6 animate-spin" /> : "啟動冒險"}
             </button>
-          </div>
+          </MotionWrapper>
         ) : (
-          <div className="flex flex-wrap items-center justify-center gap-4">
+          <div className="flex flex-wrap items-center justify-center gap-4 bg-white/40 p-2 rounded-[2.5rem] border-2 border-milky-beige backdrop-blur-sm">
             {game.phase === "between_rounds" && (
               <button
                 onClick={sendQuestion}
                 disabled={busy !== null}
-                className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-sky-200 transition-all hover:bg-sky-700 active:scale-95"
+                className="pudding-button-primary flex items-center gap-2"
               >
                 {busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radio className="h-4 w-4" />}
-                發送答題指令
+                發送下一題
               </button>
             )}
             {game.phase === "question" && (
               <button
                 onClick={revealAnswer}
                 disabled={busy !== null}
-                className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-amber-200 transition-all hover:bg-amber-700 active:scale-95"
+                className="pudding-button bg-amber-400 text-white hover:bg-amber-500 flex items-center gap-2"
               >
                 {busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 公布答案
@@ -242,30 +250,30 @@ export function HostGameClient({ params }: Props) {
               <button
                 onClick={enterSkillPhase}
                 disabled={busy !== null}
-                className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-purple-200 transition-all hover:bg-purple-700 active:scale-95"
+                className="pudding-button bg-purple-400 text-white hover:bg-purple-500 flex items-center gap-2"
               >
                 {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                進入技能發動階段
+                進入技能階段
               </button>
             )}
             {game.phase === "skill" && (
               <button
                 onClick={settleMoves}
                 disabled={busy !== null}
-                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700 active:scale-95"
+                className="pudding-button bg-indigo-500 text-white hover:bg-indigo-600 flex items-center gap-2"
               >
                 {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />}
-                結算移動
+                執行結算
               </button>
             )}
             {game.phase === "settle" && (
               <button
                 onClick={advanceRound}
                 disabled={busy !== null}
-                className="inline-flex items-center gap-2 rounded-xl border-2 border-sky-600 px-6 py-3 text-sm font-bold text-sky-600 transition-all hover:bg-sky-50 active:scale-95"
+                className="pudding-button-secondary border-2 border-milky-brown/10 flex items-center gap-2"
               >
                 {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />}
-                進入下一階段
+                下一回合
               </button>
             )}
           </div>
@@ -279,56 +287,69 @@ export function HostGameClient({ params }: Props) {
 
       {/* settle 階段：顯示各玩家移動確認狀態 */}
       {game.phase === "settle" && (
-        <section className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5 shadow-sm">
-          <h2 className="mb-3 text-sm font-bold text-indigo-900">移動確認狀態</h2>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+        <section className="mt-8 pudding-card !bg-indigo-50/40 border-indigo-100">
+          <div className="flex items-center gap-2 mb-4">
+             <div className="bg-indigo-500 text-white p-1 rounded-lg">
+                <SkipForward className="h-4 w-4" />
+             </div>
+             <h2 className="text-lg font-black text-indigo-900">玩家移動進度</h2>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {players.map((p) => {
               const done = isPlayerMoved(p);
               return (
-                <div
+                <MotionWrapper type="bounce"
                   key={p.id}
-                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors ${
+                  className={`flex flex-col gap-1 rounded-2xl border-2 px-4 py-3 transition-all ${
                     done
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                      : "border-slate-200 bg-white text-slate-500"
+                      ? "border-emerald-200 bg-white text-emerald-800 shadow-sm"
+                      : "border-milky-beige bg-milky-beige/20 text-milky-brown/40"
                   }`}
                 >
-                  <span className="text-base">{done ? "✓" : "⏳"}</span>
-                  <div>
-                    <p className="font-semibold leading-tight">{p.name}</p>
-                    <p className="text-xs opacity-70">
-                      {done ? `位置: ${p.position}` : "等待移動..."}
-                    </p>
+                  <div className="flex justify-between items-center">
+                    <p className="font-black truncate">{p.name}</p>
+                    <span className="text-lg">{done ? "✓" : "⏳"}</span>
                   </div>
-                </div>
+                  <p className="text-[10px] font-bold uppercase tracking-tight">
+                    {done ? `到第 ${p.position} 格` : "計算中..."}
+                  </p>
+                </MotionWrapper>
               );
             })}
           </div>
-          <p className="mt-3 text-xs text-indigo-600">
-            {players.filter(isPlayerMoved).length} / {players.length} 人已完成移動
-          </p>
         </section>
       )}
       {game.phase === "finished" && (
-        <section className="mt-8 rounded-2xl border border-amber-200 bg-amber-50/80 p-6 shadow-sm">
-          <div className="mb-4 flex items-center gap-2 text-amber-900">
-            <Trophy className="h-6 w-6" />
+        <section className="mt-12 pudding-card !bg-milky-apricot/10 border-milky-apricot/30">
+          <div className="mb-6 flex items-center gap-4 text-milky-brown">
+            <div className="bg-milky-apricot text-white p-3 rounded-2xl shadow-lg">
+               <Trophy className="h-8 w-8" />
+            </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-amber-800">結算</p>
-              <h2 className="text-xl font-semibold">最終排名（前三名）</h2>
-              <p className="text-sm text-amber-900/80">排序規則：星星數優先，其次目前棋盤位置（數字較大者在前）。</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-milky-brown/40">FINAL RESULTS</p>
+              <h2 className="text-3xl font-black">冒險傳奇排名</h2>
             </div>
           </div>
-          <ol className="grid gap-3 sm:grid-cols-3">
+          <ol className="grid gap-4 sm:grid-cols-3">
             {top.map((p, idx) => (
-              <li key={p.id} className="rounded-xl border border-amber-200 bg-white px-4 py-3 shadow-sm">
-                <p className="text-xs text-amber-800">第 {idx + 1} 名</p>
-                <p className="text-lg font-semibold text-slate-900">{p.name}</p>
-                <p className="text-sm text-slate-700">星星 {p.stars}</p>
-                <p className="text-sm text-slate-700">位置 {p.position}</p>
-              </li>
+              <MotionWrapper type="bounce" delay={idx * 0.1} key={p.id} className="pudding-card !bg-white/80 !p-5 relative overflow-hidden group">
+                <div className={`absolute top-0 right-0 px-4 py-1 rounded-bl-2xl font-black text-xs text-white ${idx === 0 ? 'bg-amber-400' : idx === 1 ? 'bg-slate-400' : 'bg-orange-400'}`}>
+                   RANK {idx + 1}
+                </div>
+                <p className="text-xl font-black text-milky-brown group-hover:scale-110 transition-transform">{p.name}</p>
+                <div className="mt-3 flex justify-between items-end">
+                   <div>
+                      <p className="text-[10px] font-bold text-milky-brown/40 uppercase">STARS</p>
+                      <p className="text-lg font-black text-milky-accent">★ {p.stars}</p>
+                   </div>
+                   <div className="text-right">
+                      <p className="text-[10px] font-bold text-milky-brown/40 uppercase">CELL</p>
+                      <p className="text-lg font-black">{p.position}</p>
+                   </div>
+                </div>
+              </MotionWrapper>
             ))}
-            {top.length === 0 && <p className="text-sm text-amber-900">尚無玩家資料。</p>}
+            {top.length === 0 && <p className="text-sm font-bold text-milky-brown/30">無人完成冒險...</p>}
           </ol>
         </section>
       )}

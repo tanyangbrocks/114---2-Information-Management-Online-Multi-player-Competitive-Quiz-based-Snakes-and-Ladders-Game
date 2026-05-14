@@ -11,58 +11,58 @@ export function HostPlayerTable({ game, players }: Props) {
   const rounds = Array.from({ length: game.round_count }, (_, i) => i + 1);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+    <div className="overflow-hidden rounded-3xl border border-milky-beige/50 bg-milky-white/50 p-0 shadow-lg">
+      <div className="flex items-center justify-between border-b border-milky-beige/50 px-6 py-4 bg-milky-white/30">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">即時資料</p>
-          <h2 className="text-lg font-semibold text-slate-900">玩家戰況</h2>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-milky-brown/40">REAL-TIME DATA</p>
+          <h2 className="text-xl font-black text-milky-brown">玩家戰況</h2>
         </div>
-        <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-medium text-sky-800">
-          回合 {game.current_round}/{game.round_count} · {game.phase}
+        <span className="rounded-full bg-milky-apricot px-4 py-1 text-xs font-black text-milky-brown shadow-sm">
+          ROUND {game.current_round} / {game.round_count}
         </span>
       </div>
-      <div className="max-h-[520px] overflow-auto">
+      <div className="max-h-[520px] overflow-auto custom-scrollbar">
         <table className="min-w-full text-left text-sm">
-          <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+          <thead className="sticky top-0 bg-milky-beige/40 text-[10px] font-black uppercase tracking-widest text-milky-brown/50 backdrop-blur-md">
             <tr>
-              <th className="px-3 py-2">玩家</th>
+              <th className="px-6 py-3">玩家</th>
               {rounds.map((r) => (
-                <th key={r} className="px-2 py-2">
+                <th key={r} className="px-2 py-3">
                   R{r}
                 </th>
               ))}
-              <th className="px-3 py-2">卡片</th>
-              <th className="px-3 py-2">位置</th>
-              <th className="px-3 py-2">星星</th>
+              <th className="px-6 py-3">卡片</th>
+              <th className="px-6 py-3">位置</th>
+              <th className="px-6 py-3">星星</th>
             </tr>
           </thead>
           <tbody>
             {players.map((p) => (
-              <tr key={p.id} className="border-t border-slate-100 odd:bg-white even:bg-slate-50/60">
-                <td className="px-3 py-2 font-semibold text-slate-900">{p.name}</td>
+              <tr key={p.id} className="border-t border-milky-beige/20 hover:bg-milky-apricot/5 transition-colors">
+                <td className="px-6 py-4 font-black text-milky-brown">{p.name}</td>
                 {rounds.map((r) => {
                   const ans = p.answers[String(r)] as QuizChoice | undefined;
                   return (
-                    <td key={r} className="px-2 py-2 font-mono text-xs text-slate-800">
+                    <td key={r} className="px-2 py-4 font-mono text-xs font-bold text-milky-brown/60">
                       {ans ?? "—"}
                     </td>
                   );
                 })}
-                <td className="px-3 py-2 text-xs text-slate-700">
+                <td className="px-6 py-4 text-xs font-medium text-milky-brown/70">
                   {p.cards.length === 0 ? (
                     "—"
                   ) : (
-                    <ul className="space-y-1">
-                      {p.cards.slice(-4).map((c) => (
-                        <li key={c.id} className="whitespace-nowrap">
-                          {c.name}
-                        </li>
+                    <div className="flex flex-wrap gap-1">
+                      {p.cards.slice(-3).map((c) => (
+                        <span key={c.id} className="bg-milky-beige/50 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                           {c.suit}
+                        </span>
                       ))}
-                    </ul>
+                    </div>
                   )}
                 </td>
-                <td className="px-3 py-2 font-mono text-sm text-slate-900">{p.position}</td>
-                <td className="px-3 py-2 font-mono text-sm text-amber-700">{p.stars}</td>
+                <td className="px-6 py-4 font-black text-milky-brown">{p.position}</td>
+                <td className="px-6 py-4 font-black text-milky-accent">★ {p.stars}</td>
               </tr>
             ))}
             {players.length === 0 && (

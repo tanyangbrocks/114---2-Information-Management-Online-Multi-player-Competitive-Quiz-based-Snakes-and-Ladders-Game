@@ -1,16 +1,63 @@
 @import "tailwindcss";
 
-html,
-body {
-  height: 100%;
+@theme {
+  --color-milky-white: #FFFDD0;
+  --color-milky-apricot: #FBCEB1;
+  --color-milky-beige: #F5F5DC;
+  --color-milky-brown: #5D4037;
+  --color-milky-accent: #E1C1A1;
 }
 
-body {
-  color: #0f172a;
-  background: radial-gradient(circle at top, #e0f2fe 0%, #f8fafc 45%, #eef2ff 100%);
+@layer base {
+  html,
+  body {
+    height: 100%;
+    font-family: "Microsoft JhengHei", "PingFang TC", sans-serif;
+    color: var(--color-milky-brown);
+  }
+
+  body {
+    background: linear-gradient(135deg, #FFFDD0 0%, #F5F5DC 100%);
+    @apply selection:bg-milky-apricot selection:text-milky-brown;
+  }
+}
+
+@layer components {
+  .pudding-card {
+    @apply rounded-3xl bg-white/80 p-6 shadow-xl backdrop-blur-md border border-white/50;
+    box-shadow: 0 8px 32px 0 rgba(93, 64, 55, 0.08);
+  }
+
+  .pudding-button {
+    @apply rounded-2xl px-6 py-3 font-bold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply shadow-[0_4px_0_0_rgba(93,64,55,0.1)];
+  }
+
+  .pudding-button-primary {
+    @apply pudding-button bg-milky-apricot text-milky-brown hover:bg-[#FADBB0] hover:shadow-lg;
+  }
+
+  .pudding-button-secondary {
+    @apply pudding-button bg-milky-beige text-milky-brown hover:bg-[#F0F0D0];
+  }
+
+  .glass-banner {
+    @apply fixed inset-x-0 top-1/2 -translate-y-1/2 z-[100] py-8 flex items-center justify-center;
+    @apply bg-white/40 backdrop-blur-xl border-y border-white/30 shadow-2xl;
+  }
 }
 
 button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+/* Page transitions */
+.page-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; background-color: white; }
+  to { opacity: 1; }
 }

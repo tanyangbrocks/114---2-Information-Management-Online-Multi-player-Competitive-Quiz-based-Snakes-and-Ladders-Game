@@ -8,9 +8,8 @@ import { createClient } from "@/lib/supabase/browser";
 import { usePlayerSessionStore } from "@/store/playerSessionStore";
 import { type QuizChoice, type GameCard } from "@/types/game";
 import { calculateAvailableSkills, countSuits, type AvailableSkill } from "@/lib/game/skillEngine";
-import { castSkill } from "@/app/actions/skills";
-import { respondToSkillCounter } from "@/app/actions/resolveSkills";
-import { Loader2, Sparkles, User, Radio, SkipForward } from "lucide-react";
+import { MotionWrapper } from "@/components/MotionWrapper";
+import { Loader2, Sparkles, User, Radio, SkipForward, Heart } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, use, useCallback } from "react";
 import { moveBySteps } from "@/lib/game/boardEngine";
 
@@ -248,8 +247,8 @@ export function PlayClient({ params }: Props) {
 
   if (!gameId || status === "loading" || status === "idle") {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-slate-600">
-        <Loader2 className="h-6 w-6 animate-spin" />
+      <div className="flex min-h-[50vh] items-center justify-center text-milky-brown">
+        <Loader2 className="h-10 w-10 animate-spin opacity-40" />
       </div>
     );
   }
@@ -264,37 +263,43 @@ export function PlayClient({ params }: Props) {
 
   if (!playerId || !self) {
     return (
-      <main className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4 py-10">
-        <div className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
-          <div className="mb-4 flex items-center gap-2 text-slate-900">
-            <User className="h-6 w-6 text-sky-600" />
+      <main className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4 py-10 page-fade-in">
+        <MotionWrapper type="bounce" className="pudding-card">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-milky-apricot/30 text-milky-brown">
+              <User className="h-6 w-6" />
+            </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-sky-700">Player</p>
-              <h1 className="text-xl font-semibold">加入場次 {code}</h1>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-milky-brown/60">PLAYER JOIN</p>
+              <h1 className="text-2xl font-black text-milky-brown">加入冒險</h1>
             </div>
           </div>
-          <form className="space-y-4" onSubmit={joinGame}>
+          <form className="space-y-5" onSubmit={joinGame}>
             <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-800">顯示名稱</span>
+              <span className="text-sm font-bold text-milky-brown/80 ml-1">冒險者稱號</span>
               <input
                 required
                 value={joinName}
                 onChange={(e) => setJoinName(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-slate-900 outline-none ring-sky-200 focus:ring-2"
-                placeholder="輸入姓名"
+                className="w-full rounded-2xl border-2 border-milky-beige bg-white/50 px-4 py-3 text-milky-brown outline-none ring-milky-apricot/50 focus:border-milky-apricot focus:ring-4"
+                placeholder="輸入您的名字..."
               />
             </label>
-            {joinError && <p className="text-sm text-rose-600">{joinError}</p>}
+            {joinError && <p className="text-sm font-medium text-rose-500 ml-1">＊{joinError}</p>}
             <button
               type="submit"
               disabled={joinBusy}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-sky-700"
+              className="pudding-button-primary w-full text-lg shadow-milky-apricot/20"
             >
-              {joinBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              進入遊戲
+              {joinBusy ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : (
+                <span className="flex items-center justify-center gap-2">
+                   <Sparkles className="h-5 w-5" />
+                   開始冒險
+                </span>
+              )}
             </button>
           </form>
-        </div>
+        </MotionWrapper>
       </main>
     );
   }
@@ -377,29 +382,30 @@ export function PlayClient({ params }: Props) {
       <section className="flex-1 space-y-4">
         {/* 主要狀態提示視窗 */}
         {(needsAnswer || isWaitingReveal || isShowingReveal || isSkillPhase || isWaitingSettle || isCounterPhase) && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-8 shadow-2xl">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-milky-brown/20 p-4 backdrop-blur-sm transition-all">
+            <MotionWrapper type="bounce" className="w-full max-w-sm overflow-hidden">
+              <div className="pudding-card overflow-y-auto max-h-[90vh]">
               {isCounterPhase && (
                 <div className="space-y-6">
                   <div className="text-center">
-                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-rose-100 text-rose-600">
-                      <Sparkles className="h-8 w-8" />
+                    <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-rose-100 text-rose-500 shadow-inner">
+                      <Sparkles className="h-10 w-10 animate-pulse" />
                     </div>
                     {pendingCounter && (
                       <>
-                        <h2 className="text-xl font-bold text-slate-900">反制攔截！</h2>
-                        <p className="mt-2 text-slate-500">對手對你發動了 {pendingCounter.action_type}。</p>
-                        <p className="font-bold text-rose-600">是否消耗 2 張菱形抵銷？</p>
-                        <div className="mt-6 flex gap-3">
+                        <h2 className="text-2xl font-black text-milky-brown">反制攔截！</h2>
+                        <p className="mt-2 text-milky-brown/70">對手對你發動了 <span className="font-bold text-rose-500">{pendingCounter.action_type}</span></p>
+                        <p className="mt-4 font-bold text-milky-brown bg-milky-apricot/20 py-2 rounded-xl">是否消耗 2 張菱形抵銷？</p>
+                        <div className="mt-8 flex gap-4">
                           <button
                             onClick={() => respondToSkillCounter(pendingCounter.id, true)}
-                            className="flex-1 rounded-xl bg-rose-600 py-3 font-bold text-white shadow-lg"
+                            className="pudding-button-primary flex-1 bg-rose-400 text-white hover:bg-rose-500"
                           >
                             是
                           </button>
                           <button
                             onClick={() => respondToSkillCounter(pendingCounter.id, false)}
-                            className="flex-1 rounded-xl bg-slate-100 py-3 font-bold text-slate-600"
+                            className="pudding-button-secondary flex-1"
                           >
                             否
                           </button>
@@ -408,9 +414,9 @@ export function PlayClient({ params }: Props) {
                     )}
                     {snakeTarget && (
                       <>
-                        <h2 className="text-xl font-bold text-slate-900">遭遇電鰻/蛇！</h2>
-                        <p className="mt-2 text-slate-500">你即將掉落。是否消耗 1 張紅心抵銷？</p>
-                        <div className="mt-6 flex gap-3">
+                        <h2 className="text-2xl font-black text-milky-brown">遭遇電鰻/蛇！</h2>
+                        <p className="mt-2 text-milky-brown/70">你即將掉落。是否消耗 1 張紅心抵銷？</p>
+                        <div className="mt-8 flex gap-4">
                           <button
                             onClick={() => {
                               const hId = snakeTarget.cards[0].id;
@@ -418,7 +424,7 @@ export function PlayClient({ params }: Props) {
                               const card = self.cards.find((c) => c.round === game.current_round);
                               performMove(self.position + (card?.points || 0), 0, hId);
                             }}
-                            className="flex-1 rounded-xl bg-rose-600 py-3 font-bold text-white shadow-lg"
+                            className="pudding-button-primary flex-1 bg-rose-400 text-white hover:bg-rose-500"
                           >
                             是 (消耗紅心)
                           </button>
@@ -429,7 +435,7 @@ export function PlayClient({ params }: Props) {
                               setSnakeTarget(null);
                               performMove(pos, stars);
                             }}
-                            className="flex-1 rounded-xl bg-slate-100 py-3 font-bold text-slate-600"
+                            className="pudding-button-secondary flex-1"
                           >
                             否 (正常掉落)
                           </button>
@@ -442,19 +448,19 @@ export function PlayClient({ params }: Props) {
               {needsAnswer && (
                 <div className="space-y-6">
                   <div className="text-center">
-                    <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-sky-600">
-                      <Radio className="h-6 w-6" />
+                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-milky-apricot/20 text-milky-brown">
+                      <Radio className="h-8 w-8" />
                     </div>
-                    <h2 className="text-xl font-bold text-slate-900">第 {game.current_round} 回合：請作答</h2>
-                    <p className="mt-1 text-sm text-slate-500">請在手機上選擇您的答案</p>
+                    <h2 className="text-2xl font-black text-milky-brown">第 {game.current_round} 回合</h2>
+                    <p className="mt-1 text-sm font-bold text-milky-brown/50">請選擇您的答案</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-4">
                     {(["A", "B", "C", "D"] as QuizChoice[]).map((choice) => (
                       <button
                         key={choice}
                         onClick={() => handleAnswer(choice)}
                         disabled={answerBusy}
-                        className="flex h-16 items-center justify-center rounded-2xl border-2 border-slate-100 bg-slate-50 text-2xl font-black text-slate-400 transition-all hover:border-sky-500 hover:bg-sky-50 hover:text-sky-600 active:scale-95 disabled:opacity-50"
+                        className="flex h-20 items-center justify-center rounded-3xl border-b-4 border-milky-beige bg-milky-beige/30 text-3xl font-black text-milky-brown/40 transition-all hover:border-milky-apricot hover:bg-milky-apricot/20 hover:text-milky-brown active:translate-y-1 active:border-b-0 disabled:opacity-50"
                       >
                         {choice}
                       </button>
@@ -464,40 +470,41 @@ export function PlayClient({ params }: Props) {
               )}
 
               {isWaitingReveal && (
-                <div className="py-6 text-center">
-                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-amber-500">
-                    <Loader2 className="h-8 w-8 animate-spin" />
-                  </div>
-                  <h2 className="text-xl font-bold text-slate-900">已送出答案！</h2>
-                  <p className="mt-2 text-slate-500">請等待主辦方公布正確答案...</p>
+                <div className="py-8 text-center">
+                   <div className="glass-banner">
+                      <div className="flex flex-col items-center gap-4">
+                        <Loader2 className="h-12 w-12 animate-spin text-milky-brown/30" />
+                        <h2 className="text-2xl font-black text-milky-brown tracking-widest">等待主辦方公布答案...</h2>
+                      </div>
+                   </div>
                 </div>
               )}
 
               {isShowingReveal && (
                 <div className="text-center">
                   {self.cards.find((c) => c.round === game.current_round) ? (
-                    <div className="space-y-4">
-                      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-                        <Sparkles className="h-8 w-8" />
+                    <div className="space-y-6">
+                      <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-lg">
+                        <Sparkles className="h-10 w-10 animate-bounce" />
                       </div>
                       <div>
-                        <h2 className="text-xl font-bold text-slate-900">答案已公布！</h2>
-                        <p className="text-sm text-slate-500">你獲得了以下卡片：</p>
+                        <h2 className="text-2xl font-black text-milky-brown">正確答案已揭曉！</h2>
+                        <p className="text-sm font-bold text-milky-brown/50">恭喜獲得冒險卡片：</p>
                       </div>
-                      <div className="rounded-2xl border-2 border-emerald-100 bg-emerald-50 p-4">
-                        <p className="text-xs font-bold uppercase tracking-wider text-emerald-600">
+                      <div className="rounded-3xl border-4 border-emerald-100 bg-emerald-50 p-6 shadow-inner">
+                        <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-600/60">
                           {self.cards.find((c) => c.round === game.current_round)?.name}
                         </p>
-                        <p className="mt-1 text-2xl font-black text-emerald-700">
-                          +{self.cards.find((c) => c.round === game.current_round)?.points} 點
+                        <p className="mt-2 text-4xl font-black text-emerald-700">
+                          +{self.cards.find((c) => c.round === game.current_round)?.points} 步
                         </p>
                       </div>
-                      <p className="text-sm text-slate-400">等待主辦方發起結算...</p>
+                      <p className="text-sm font-bold text-milky-brown/30 animate-pulse">主辦方正在結算移動中...</p>
                     </div>
                   ) : (
-                    <div className="py-10">
-                      <Loader2 className="mx-auto h-8 w-8 animate-spin text-slate-300" />
-                      <p className="mt-4 text-slate-400">正在生成卡片...</p>
+                    <div className="py-12">
+                      <Loader2 className="mx-auto h-12 w-12 animate-spin text-milky-brown/10" />
+                      <p className="mt-6 font-bold text-milky-brown/40">生成卡片中...</p>
                     </div>
                   )}
                 </div>
@@ -506,16 +513,15 @@ export function PlayClient({ params }: Props) {
               {isSkillPhase && (
                 <div className="space-y-6">
                   <div className="text-center">
-                    <h2 className="text-xl font-bold text-slate-900">技能發動階段</h2>
-                    <p className="mt-1 text-sm text-slate-500">選擇要發動的能力，或直接略過</p>
+                    <h2 className="text-2xl font-black text-milky-brown">技能發動</h2>
+                    <p className="mt-1 text-sm font-bold text-milky-brown/40">選擇您的策略，或是保存體力</p>
                   </div>
 
                   {!hasActedSkill ? (
                     <div className="space-y-4">
-                      {/* 目標選擇 (如果有的話) */}
                       {availableSkills.some(s => s.requiresTarget) && (
                         <select
-                          className="w-full rounded-xl border border-slate-200 p-3 text-slate-900"
+                          className="w-full rounded-2xl border-2 border-milky-beige bg-white/50 p-4 text-milky-brown font-bold outline-none focus:border-milky-apricot transition-all"
                           value={selectedTarget}
                           onChange={(e) => setSelectedTarget(e.target.value)}
                         >
@@ -526,75 +532,90 @@ export function PlayClient({ params }: Props) {
                         </select>
                       )}
 
-                      <div className="grid grid-cols-1 gap-2 max-h-[30vh] overflow-y-auto">
+                      <div className="grid grid-cols-1 gap-3 max-h-[35vh] overflow-y-auto px-1">
                         {availableSkills.map((skill) => (
                           <button
                             key={skill.actionType}
                             onClick={() => handleCastSkill(skill)}
                             disabled={skillBusy}
-                            className="flex items-center justify-between rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 hover:bg-sky-100 disabled:opacity-50"
+                            className="flex items-center justify-between rounded-2xl border-2 border-milky-apricot/30 bg-milky-apricot/10 px-5 py-4 hover:bg-milky-apricot/30 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50"
                           >
-                            <span className="font-bold text-sky-800">{skill.actionType}</span>
-                            <span className="text-xs text-sky-600">消耗: {skill.costDescription}</span>
+                            <div className="flex flex-col items-start">
+                              <span className="font-black text-milky-brown text-lg">{skill.actionType}</span>
+                              <span className="text-[10px] font-bold text-milky-brown/40 uppercase">技能代碼</span>
+                            </div>
+                            <span className="text-xs font-black bg-white/60 px-3 py-1 rounded-full text-milky-brown">
+                              消耗: {skill.costDescription}
+                            </span>
                           </button>
                         ))}
                         {availableSkills.length === 0 && (
-                          <p className="text-center text-sm text-slate-500 py-4">目前沒有可發動的技能</p>
+                          <div className="text-center py-8 rounded-2xl bg-milky-beige/20 border-2 border-dashed border-milky-beige/50">
+                             <p className="text-sm font-bold text-milky-brown/30">目前沒有可使用的技能</p>
+                          </div>
                         )}
                       </div>
                       
                       <button
                         onClick={handleSkipSkill}
                         disabled={skillBusy}
-                        className="w-full rounded-xl border-2 border-slate-200 py-3 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                        className="pudding-button-secondary w-full"
                       >
-                        {skillBusy ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : "不發動能力 (略過)"}
+                        {skillBusy ? <Loader2 className="mx-auto h-6 w-6 animate-spin text-milky-brown/30" /> : "不發動技能 (略過)"}
                       </button>
                     </div>
                   ) : (
-                    <div className="py-6 text-center">
-                      <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-500">
-                        <Sparkles className="h-8 w-8" />
-                      </div>
-                      <h2 className="text-xl font-bold text-slate-900">已確認行動</h2>
-                      <p className="mt-2 text-slate-500">等待主辦方結算...</p>
+                    <div className="py-10 text-center">
+                       <div className="glass-banner">
+                          <div className="flex flex-col items-center gap-4">
+                            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-lg mb-2">
+                               <Sparkles className="h-8 w-8 animate-pulse" />
+                            </div>
+                            <h2 className="text-2xl font-black text-milky-brown tracking-widest">已確認行動，等待結算...</h2>
+                          </div>
+                       </div>
                     </div>
                   )}
                 </div>
               )}
 
               {isWaitingSettle && (
-                <div className="py-6 text-center">
-                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-50 text-indigo-500">
-                    <SkipForward className="h-8 w-8 animate-pulse" />
-                  </div>
-                  <h2 className="text-xl font-bold text-slate-900">準備移動中</h2>
-                  <p className="mt-2 text-slate-500">所有玩家將同時開始滑行...</p>
+                <div className="py-10 text-center">
+                   <div className="glass-banner">
+                      <div className="flex flex-col items-center gap-4">
+                        <SkipForward className="h-16 w-16 animate-pulse text-milky-brown/20" />
+                        <h2 className="text-3xl font-black text-milky-brown tracking-widest">全員準備出發！</h2>
+                        <p className="font-bold text-milky-brown/40">即將開始同步滑行移動...</p>
+                      </div>
+                   </div>
                 </div>
               )}
-            </div>
+              </div>
+            </MotionWrapper>
           </div>
         )}
 
-        <header className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
-          <p className="text-xs uppercase tracking-wide text-sky-700">你的狀態</p>
-          <div className="mt-2 flex flex-wrap items-center gap-4 text-slate-900">
+        <header className="pudding-card !p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-milky-brown/40">ADVENTURER STATUS</p>
+          <div className="mt-3 flex flex-wrap items-center gap-6 text-milky-brown">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-full bg-milky-apricot flex items-center justify-center text-white">
+                <User className="h-4 w-4" />
+              </div>
+              <p className="text-lg font-black">{self.name}</p>
+            </div>
+            <div className="h-8 w-px bg-milky-brown/10 hidden sm:block" />
             <div>
-              <p className="text-xs text-slate-500">姓名</p>
-              <p className="text-lg font-semibold">{self.name}</p>
+              <p className="text-[10px] font-bold text-milky-brown/40">目前位置</p>
+              <p className="text-xl font-black">第 {self.position} 格</p>
             </div>
             <div>
-              <p className="text-xs text-slate-500">棋盤位置</p>
-              <p className="text-lg font-semibold">{self.position}</p>
+              <p className="text-[10px] font-bold text-milky-brown/40">獲得星星</p>
+              <p className="text-xl font-black text-milky-accent">★ {self.stars}</p>
             </div>
-            <div>
-              <p className="text-xs text-slate-500">星星</p>
-              <p className="text-lg font-semibold text-amber-700">{self.stars}</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-500">場次狀態</p>
-              <p className="text-sm font-medium text-slate-800">
-                回合 {game.current_round}/{game.round_count} · {game.phase === "finished" ? "已結束" : "進行中"}
+            <div className="ml-auto bg-white/50 px-4 py-1 rounded-full border border-milky-beige/50">
+              <p className="text-xs font-bold text-milky-brown/60 uppercase">
+                 Round {game.current_round} / {game.round_count}
               </p>
             </div>
           </div>
@@ -617,28 +638,52 @@ export function PlayClient({ params }: Props) {
         )}
         <BoardGrid players={boardPlayers} selfId={self.id} />
       </section>
-      <aside className="w-full max-w-sm space-y-3 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm lg:sticky lg:top-6">
-        <h2 className="text-sm font-semibold text-slate-900">我的卡片 (手牌)</h2>
-        <div className="flex justify-between rounded-lg bg-slate-50 p-2 text-sm font-bold shadow-inner">
-          <span className="text-slate-800">♠ {suitCounts.S}</span>
-          <span className="text-slate-800">♣ {suitCounts.C}</span>
-          <span className="text-rose-600">♦ {suitCounts.D}</span>
-          <span className="text-rose-600">♥ {suitCounts.H}</span>
+      <aside className="w-full max-w-sm space-y-4 pudding-card !bg-white/40 lg:sticky lg:top-6">
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-8 rounded-xl bg-milky-brown text-white flex items-center justify-center">
+             <Heart className="h-4 w-4" />
+          </div>
+          <h2 className="text-lg font-black text-milky-brown">我的卡片</h2>
         </div>
+        
+        <div className="grid grid-cols-4 gap-2 rounded-2xl bg-white/60 p-3 shadow-inner">
+          <div className="text-center">
+            <p className="text-[10px] font-bold text-milky-brown/40">♠</p>
+            <p className="text-sm font-black">{suitCounts.S}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-[10px] font-bold text-milky-brown/40">♣</p>
+            <p className="text-sm font-black">{suitCounts.C}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-[10px] font-bold text-rose-400">♦</p>
+            <p className="text-sm font-black text-rose-500">{suitCounts.D}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-[10px] font-bold text-rose-400">♥</p>
+            <p className="text-sm font-black text-rose-500">{suitCounts.H}</p>
+          </div>
+        </div>
+
         {availableCards.length === 0 ? (
-          <p className="text-sm text-slate-600">尚無卡片，或所有卡片已使用。</p>
+          <div className="py-10 text-center rounded-2xl border-2 border-dashed border-milky-brown/10">
+            <p className="text-xs font-bold text-milky-brown/30 uppercase tracking-widest">NO CARDS YET</p>
+          </div>
         ) : (
-          <ul className="space-y-2 text-sm text-slate-800 max-h-[40vh] overflow-y-auto">
+          <ul className="space-y-3 max-h-[50vh] overflow-y-auto pr-1 custom-scrollbar">
             {[...availableCards].reverse().map((c) => (
-              <li key={c.id} className="rounded-lg border border-slate-100 bg-white px-3 py-2 shadow-sm">
+              <MotionWrapper type="bounce" key={c.id} className="group relative overflow-hidden rounded-2xl border-2 border-milky-beige bg-white p-4 shadow-sm hover:border-milky-apricot/50 transition-all">
                 <div className="flex justify-between items-center">
-                  <p className="font-semibold">{c.name}</p>
-                  <span className={`text-lg ${c.suit === 'S' || c.suit === 'C' ? 'text-slate-800' : 'text-rose-600'}`}>
+                  <div>
+                    <p className="text-sm font-black text-milky-brown">{c.name}</p>
+                    <p className="text-[10px] font-bold text-milky-brown/30 uppercase">Round {c.round}</p>
+                  </div>
+                  <span className={`text-2xl ${c.suit === 'S' || c.suit === 'C' ? 'text-milky-brown' : 'text-rose-400'}`}>
                     {c.suit === 'S' ? '♠' : c.suit === 'C' ? '♣' : c.suit === 'D' ? '♦' : '♥'}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500">回合 {c.round}</p>
-              </li>
+                <div className="absolute inset-x-0 bottom-0 h-1 bg-milky-apricot opacity-0 group-hover:opacity-100 transition-opacity" />
+              </MotionWrapper>
             ))}
           </ul>
         )}

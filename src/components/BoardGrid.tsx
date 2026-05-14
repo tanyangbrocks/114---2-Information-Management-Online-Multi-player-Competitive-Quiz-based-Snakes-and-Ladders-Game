@@ -36,31 +36,14 @@ export function BoardGrid({ players, selfId }: Props) {
       <div className="grid grid-cols-10 gap-1 sm:gap-1.5 h-full w-full">
         {grid.flatMap((row) =>
           row.map((cell) => {
-            const kind = cellKind(cell);
             return (
               <div
                 key={cell}
-                className={cn(
-                  "relative flex aspect-square flex-col items-center justify-center rounded-md border text-[10px] font-semibold sm:text-xs",
-                  kind === "escalator" && "border-emerald-400 bg-emerald-50 text-emerald-900",
-                  kind === "eel" && "border-rose-400 bg-rose-50 text-rose-900",
-                  kind === "plain" && "border-slate-200 bg-white text-slate-800"
-                )}
+                className="relative flex h-full w-full items-center justify-center rounded-xl border-2 border-milky-beige/50 bg-white/40"
               >
-                <span className="opacity-30">{cell}</span>
-                {/* 標註起點與終點色塊 */}
-                {connectors.some(c => c.from === cell) && (
-                  <div className={cn(
-                    "absolute top-1 right-1 h-1.5 w-1.5 rounded-full",
-                    cellKind(cell) === "escalator" ? "bg-emerald-500" : "bg-rose-500"
-                  )} />
-                )}
-                {connectors.some(c => c.to === cell) && (
-                  <div className={cn(
-                    "absolute bottom-1 left-1 h-1.5 w-1.5 rounded-full opacity-50",
-                    connectors.find(c => c.to === cell)?.type === "escalator" ? "bg-emerald-400" : "bg-rose-400"
-                  )} />
-                )}
+                <span className="text-[10px] font-black text-milky-brown/20 absolute top-1 left-1.5">
+                  {cell}
+                </span>
               </div>
             );
           })
@@ -69,20 +52,33 @@ export function BoardGrid({ players, selfId }: Props) {
 
       {/* SVG 連接線層 */}
       <svg className="absolute inset-0 pointer-events-none h-full w-full overflow-visible" viewBox="0 0 100 100">
-        {connectors.map((conn, i) => {
-          const start = getCellCoords(conn.from);
-          const end = getCellCoords(conn.to);
-          const isEscalator = conn.type === "escalator";
+        {ESCALATORS.map(([start, end], idx) => {
+          const s = getCellCoords(start);
+          const e = getCellCoords(end);
           return (
-            <line
-              key={i}
-              x1={start.x}
-              y1={start.y}
-              x2={end.x}
-              y2={end.y}
-              stroke={isEscalator ? "#10b981" : "#f43f5e"}
-              strokeWidth="1"
-              strokeDasharray={isEscalator ? "0" : "2 1"}
+            <path
+              key={`ladder-${idx}`}
+              d={`M ${s.x} ${s.y} L ${e.x} ${e.y}`}
+              stroke="#FBCEB1"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeDasharray="4 2"
+              fill="none"
+              className="opacity-60"
+            />
+          );
+        })}
+        {EELS.map(([start, end], idx) => {
+          const s = getCellCoords(start);
+          const e = getCellCoords(end);
+          return (
+            <path
+              key={`eel-${idx}`}
+              d={`M ${s.x} ${s.y} L ${e.x} ${e.y}`}
+              stroke="#A1887F"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              fill="none"
               className="opacity-40"
             />
           );
@@ -91,11 +87,10 @@ export function BoardGrid({ players, selfId }: Props) {
 
       {/* 玩家棋子層 */}
       <div className="absolute inset-0 pointer-events-none">
-        {players.map((p, idx) => (
+        {players.map((p) => (
           <PlayerToken
             key={p.id}
             player={p}
-            color={PLAYER_PALETTE[idx % PLAYER_PALETTE.length]!}
             isSelf={p.id === selfId}
           />
         ))}
@@ -104,7 +99,7 @@ export function BoardGrid({ players, selfId }: Props) {
   );
 }
 
-function PlayerToken({ player, color, isSelf }: { player: PlayerRow; color: string; isSelf: boolean }) {
+function PlayerToken({ player, isSelf }: { player: PlayerRow; isSelf: boolean }) {
   const controls = useAnimation();
   const lastPosRef = useRef(player.position);
 
@@ -115,12 +110,9 @@ function PlayerToken({ player, color, isSelf }: { player: PlayerRow; color: stri
       const from = lastPosRef.current;
       const to = player.position;
       
-      // 1. 找出是否包含跳轉點（最後一個點）
       const connector = [...ESCALATORS, ...EELS].find(([_, t]) => t === to);
       const intermediateTo = connector ? connector[0] : to;
 
-      // 2. 規劃格子路徑 (Grid Path)
-      // 簡化邏輯：如果是前進，路徑就是 [from...intermediateTo]
       const path: number[] = [];
       if (intermediateTo > from) {
         for (let i = from + 1; i <= intermediateTo; i++) path.push(i);
@@ -128,9 +120,8 @@ function PlayerToken({ player, color, isSelf }: { player: PlayerRow; color: stri
         for (let i = from - 1; i >= intermediateTo; i--) path.push(i);
       }
 
-      // 3. 執行格子移動 (總共 1s)
       if (path.length > 0) {
-        const durationPerStep = 1 / path.length;
+        const durationPerStep = Math.min(0.2, 1 / path.length);
         for (const step of path) {
           const coords = getCellCoords(step);
           await controls.start({
@@ -141,14 +132,13 @@ function PlayerToken({ player, color, isSelf }: { player: PlayerRow; color: stri
         }
       }
 
-      // 4. 執行跳轉移動 (總共 1s)
       if (connector) {
         const finalCoords = getCellCoords(to);
         await controls.start({
           left: `${finalCoords.x}%`,
           top: `${finalCoords.y}%`,
           scale: [1, 1.3, 1],
-          transition: { duration: 1, ease: "easeInOut" }
+          transition: { duration: 0.8, ease: "easeInOut" }
         });
       }
 
@@ -175,11 +165,16 @@ function PlayerToken({ player, color, isSelf }: { player: PlayerRow; color: stri
     >
       <div
         className={cn(
-          "h-3 w-3 sm:h-4 sm:w-4 rounded-full border-2 border-white shadow-lg",
-          isSelf && "ring-2 ring-amber-400 ring-offset-1"
+          "h-4 w-4 sm:h-5 sm:w-5 rounded-full border-2 border-white shadow-lg transition-transform",
+          isSelf ? "bg-[#5D4037] ring-4 ring-[#FBCEB1]/50 scale-125" : "bg-[#FBCEB1]"
         )}
-        style={{ backgroundColor: color }}
-      />
+      >
+        {isSelf && (
+           <div className="absolute inset-0 flex items-center justify-center">
+              <div className="h-1 w-1 bg-white rounded-full animate-ping" />
+           </div>
+        )}
+      </div>
     </motion.div>
   );
 }
