@@ -30,15 +30,19 @@
 
   .pudding-button {
     @apply rounded-2xl px-6 py-3 font-bold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
-    @apply shadow-[0_4px_0_0_rgba(93,64,55,0.1)];
+    box-shadow: 0 4px 0 0 rgba(93, 64, 55, 0.1);
   }
 
   .pudding-button-primary {
-    @apply pudding-button bg-milky-apricot text-milky-brown hover:bg-[#FADBB0] hover:shadow-lg;
+    @apply rounded-2xl px-6 py-3 font-bold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-milky-apricot text-milky-brown hover:bg-[#FADBB0] hover:shadow-lg;
+    box-shadow: 0 4px 0 0 rgba(93, 64, 55, 0.1);
   }
 
   .pudding-button-secondary {
-    @apply pudding-button bg-milky-beige text-milky-brown hover:bg-[#F0F0D0];
+    @apply rounded-2xl px-6 py-3 font-bold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-milky-beige text-milky-brown hover:bg-[#F0F0D0];
+    box-shadow: 0 4px 0 0 rgba(93, 64, 55, 0.1);
   }
 
   .glass-banner {
