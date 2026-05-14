@@ -3,24 +3,17 @@
  * 數字 1 在左下角，之字形向上至 100。
  */
 export const ESCALATORS: ReadonlyArray<readonly [number, number]> = [
-  [4, 25],
-  [13, 46],
-  [33, 49],
-  [42, 63],
-  [50, 69],
-  [62, 81],
-  [74, 92]
+  [3, 22],
+  [36, 55],
+  [67, 88],
+  [7, 34]
 ];
 
 export const EELS: ReadonlyArray<readonly [number, number]> = [
-  [27, 5],
-  [40, 3],
-  [43, 18],
-  [54, 31],
-  [66, 45],
-  [76, 58],
-  [89, 53],
-  [99, 41]
+  [26, 5],
+  [58, 39],
+  [93, 72],
+  [48, 17]
 ];
 
 const jumps = new Map<number, number>();

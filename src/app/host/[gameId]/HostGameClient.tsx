@@ -50,6 +50,24 @@ export function HostGameClient({ params }: Props) {
     }
   };
 
+  const startGame = async () => {
+    if (!game) return;
+    setBusy("next");
+    try {
+      const { error: upErr } = await supabase
+        .from("games")
+        .update({ phase: "between_rounds", current_round: 1 })
+        .eq("id", game.id);
+      if (upErr) throw upErr;
+      await reload();
+      await sendSignal();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "啟動失敗");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const advanceRound = async () => {
     if (!game) return;
     setBusy("next");
@@ -111,26 +129,37 @@ export function HostGameClient({ params }: Props) {
           <h1 className="text-2xl font-semibold text-slate-900">主辦後臺</h1>
           <p className="text-sm text-slate-600">即時監看多名玩家，並透過 Supabase Realtime 同步狀態。</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void sendQuestion()}
-            disabled={busy !== null || game.phase === "finished"}
-            className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-sky-700 disabled:cursor-not-allowed"
-          >
-            {busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radio className="h-4 w-4" />}
-            發送答題指令
-          </button>
-          <button
-            type="button"
-            onClick={() => void advanceRound()}
-            disabled={busy !== null || game.phase !== "question"}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:border-sky-300 disabled:cursor-not-allowed"
-          >
-            {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />}
-            進入下個回合
-          </button>
-        </div>
+        {game.phase === "lobby" ? (
+          <div className="rounded-2xl border border-sky-100 bg-sky-50/50 p-6 text-center shadow-sm">
+            <h3 className="mb-4 text-sm font-medium text-sky-900">人員到齊後，點擊下方按鈕開始第一回合</h3>
+            <button
+              onClick={startGame}
+              disabled={busy !== null}
+              className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-8 py-3 text-sm font-bold text-white shadow-lg shadow-sky-200 transition-all hover:bg-sky-700 active:scale-95 disabled:opacity-50"
+            >
+              {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : "開始遊戲"}
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            <button
+              onClick={sendQuestion}
+              disabled={busy !== null || game.phase === "finished"}
+              className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-sky-200 transition-all hover:bg-sky-700 active:scale-95 disabled:opacity-50"
+            >
+              {busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radio className="h-4 w-4" />}
+              發送答題指令
+            </button>
+            <button
+              onClick={advanceRound}
+              disabled={busy !== null || game.phase === "finished"}
+              className="inline-flex items-center gap-2 rounded-xl border-2 border-sky-600 px-6 py-3 text-sm font-bold text-sky-600 transition-all hover:bg-sky-50 active:scale-95 disabled:opacity-50"
+            >
+              {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />}
+              進入下一階段
+            </button>
+          </div>
+        )}
       </header>
 
       <div className="grid gap-4 lg:grid-cols-[320px,1fr]">

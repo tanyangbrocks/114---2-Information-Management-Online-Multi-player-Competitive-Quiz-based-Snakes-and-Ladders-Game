@@ -97,7 +97,15 @@ export function PlayClient({ params }: Props) {
     setAnswerBusy(true);
     try {
       const isCorrect = cfg.answer === choice;
+      
+      // 1. 答題後間距 0.5s
+      await new Promise((r) => setTimeout(r, 500));
+      
       const card = drawForSlot(isCorrect ? 2 : 1, game.current_round);
+      
+      // 2. 抽卡後間距 0.5s
+      await new Promise((r) => setTimeout(r, 500));
+      
       const move = moveBySteps(self.position, card.points);
       const newStars = self.stars + move.starsGained;
       const newCards = [...self.cards, card];
