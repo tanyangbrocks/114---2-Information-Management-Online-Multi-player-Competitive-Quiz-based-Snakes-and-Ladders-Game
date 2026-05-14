@@ -3,8 +3,9 @@
 import { useSnakeLadderBoard } from "@/hooks/useSnakeLadderBoard";
 import type { PlayerRow } from "@/types/game";
 import { cn } from "@/lib/cn";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { ESCALATORS, EELS } from "@/lib/game/boardEngine";
+import { motion, useAnimation } from "framer-motion";
 
 const PLAYER_PALETTE = ["#0ea5e9", "#6366f1", "#f97316", "#22c55e", "#e11d48", "#a855f7"];
 
@@ -26,7 +27,6 @@ export function BoardGrid({ players, selfId }: Props) {
   const { buildZigzagGrid, cellKind } = useSnakeLadderBoard();
   const grid = buildZigzagGrid();
 
-  // 取得所有跳轉點的對應關係，方便 UI 標註
   const jumps = useMemo(() => {
     const m = new Map<number, number>();
     for (const [from, to] of ESCALATORS) m.set(from, to);
@@ -36,7 +36,6 @@ export function BoardGrid({ players, selfId }: Props) {
 
   return (
     <div className="relative w-full max-w-xl select-none">
-      {/* 棋盤底層 */}
       <div className="grid grid-cols-10 gap-1 sm:gap-1.5">
         {grid.flatMap((row) =>
           row.map((cell) => {
@@ -65,7 +64,7 @@ export function BoardGrid({ players, selfId }: Props) {
         )}
       </div>
 
-      {/* 玩家棋子層 (絕對定位以進行動畫) */}
+      {/* 玩家棋子層 */}
       <div className="absolute inset-0 pointer-events-none p-0.5 sm:p-0.75">
         {players.map((p, idx) => (
           <PlayerToken
@@ -77,7 +76,6 @@ export function BoardGrid({ players, selfId }: Props) {
         ))}
       </div>
 
-      {/* 圖例 */}
       <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-600">
         <span className="inline-flex items-center gap-1">
           <span className="h-2 w-2 rounded-full ring-2 ring-amber-400 ring-offset-1 bg-sky-500" /> 自己的棋子
@@ -94,52 +92,72 @@ export function BoardGrid({ players, selfId }: Props) {
 }
 
 function PlayerToken({ player, color, isSelf }: { player: PlayerRow; color: string; isSelf: boolean }) {
-  // 動畫位置狀態
-  const [displayPos, setDisplayPos] = useState(player.position);
-  const [isJumping, setIsJumping] = useState(false);
+  const controls = useAnimation();
 
   useEffect(() => {
-    if (player.position !== displayPos) {
-      // 檢查是否為跳轉目標 (升天電梯或電鰻)
+    async function runAnimation() {
+      // 檢查是否包含跳轉點
       const ladderFrom = ESCALATORS.find(([_, to]) => to === player.position)?.[0];
       const eelFrom = EELS.find(([_, to]) => to === player.position)?.[0];
       const triggerPoint = ladderFrom || eelFrom;
 
-      if (triggerPoint && triggerPoint !== displayPos) {
-        // 分段動畫：先滑到觸發點 (1s)，再滑到終點 (再 1s)
-        setIsJumping(true);
-        setDisplayPos(triggerPoint);
-        const timer = setTimeout(() => {
-          setDisplayPos(player.position);
-          setIsJumping(false);
-        }, 1000);
-        return () => clearTimeout(timer);
+      if (triggerPoint) {
+        // 第一階段：移動到觸發點
+        const tCoords = getCellCoords(triggerPoint);
+        await controls.start({
+          left: `${tCoords.x}%`,
+          top: `${tCoords.y}%`,
+          scale: 1.2,
+          transition: { type: "spring", stiffness: 100, damping: 15 }
+        });
+
+        // 停頓一下
+        await new Promise((r) => setTimeout(r, 200));
+
+        // 第二階段：跳轉到終點
+        const fCoords = getCellCoords(player.position);
+        await controls.start({
+          left: `${fCoords.x}%`,
+          top: `${fCoords.y}%`,
+          scale: 1,
+          transition: { type: "spring", stiffness: 120, damping: 20 }
+        });
       } else {
-        // 一般移動：直接滑到終點 (1s)
-        setDisplayPos(player.position);
+        // 一般移動
+        const coords = getCellCoords(player.position);
+        void controls.start({
+          left: `${coords.x}%`,
+          top: `${coords.y}%`,
+          scale: isSelf ? 1.1 : 1,
+          transition: { type: "spring", stiffness: 100, damping: 15 }
+        });
       }
     }
-  }, [player.position]);
+    
+    void runAnimation();
+  }, [player.position, controls, isSelf]);
 
-  const coords = getCellCoords(displayPos);
+  // 初始化位置
+  const initialCoords = useMemo(() => getCellCoords(player.position), []);
 
   return (
-    <div
-      className="absolute h-[10%] w-[10%] flex items-center justify-center transition-all duration-1000 ease-in-out"
-      style={{
-        left: `${coords.x}%`,
-        top: `${coords.y}%`,
-        zIndex: isSelf ? 20 : 10,
+    <motion.div
+      animate={controls}
+      initial={{
+        left: `${initialCoords.x}%`,
+        top: `${initialCoords.y}%`,
+        scale: isSelf ? 1.1 : 1
       }}
+      className="absolute h-[10%] w-[10%] flex items-center justify-center"
+      style={{ zIndex: isSelf ? 20 : 10 }}
     >
       <div
         className={cn(
-          "h-3 w-3 sm:h-4 sm:w-4 rounded-full border-2 border-white shadow-md transition-transform",
-          isSelf && "ring-2 ring-amber-400 ring-offset-1 scale-110",
-          isJumping && "scale-125" // 跳轉時稍微放大
+          "h-3 w-3 sm:h-4 sm:w-4 rounded-full border-2 border-white shadow-lg",
+          isSelf && "ring-2 ring-amber-400 ring-offset-1"
         )}
         style={{ backgroundColor: color }}
       />
-    </div>
+    </motion.div>
   );
 }
