@@ -78,6 +78,8 @@ export function mapPlayerRow(row: Record<string, unknown>): PlayerRow {
     stars: Number(row.stars),
     cards: parseCards(row.cards),
     answers: parseAnswers(row.answers),
+    predicted_steps: Number(row.predicted_steps || 0),
+    passive_modifiers: Number(row.passive_modifiers || 0),
     created_at: String(row.created_at),
     updated_at: String(row.updated_at)
   };
