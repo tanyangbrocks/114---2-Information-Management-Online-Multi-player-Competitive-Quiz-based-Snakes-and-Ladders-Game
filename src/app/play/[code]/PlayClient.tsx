@@ -172,6 +172,28 @@ export function PlayClient({ params }: Props) {
     }
   }, [skillActions, self]);
 
+  const performMove = useCallback(async (pos: number, stars: number, heartToConsume?: string) => {
+    if (!self || !game) return;
+    try {
+      if (heartToConsume) {
+        const newCards = self.cards.map(c => c.id === heartToConsume ? { ...c, is_used: true } : c);
+        await supabase.from("players").update({ cards: newCards }).eq("id", self.id);
+      }
+      
+      const { error: upErr } = await supabase
+        .from("players")
+        .update({ position: pos, stars: self.stars + stars })
+        .eq("id", self.id);
+      if (upErr) throw upErr;
+      await reload();
+      setMovedRound(game.current_round);
+      void sendMoveDone(self.id, self.name, pos);
+      void sendSignal();
+    } catch (e) {
+      console.error(e);
+    }
+  }, [self, game, supabase, reload, sendMoveDone, sendSignal]);
+
   // 處理移動邏輯 (當主辦方進入 settle 階段)
   useEffect(() => {
     if (game?.phase === "settle" && self && gameId) {
@@ -199,28 +221,6 @@ export function PlayClient({ params }: Props) {
       void performMove(move.position, move.starsGained);
     }
   }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, sendMoveDone, supabase, performMove]);
-
-  const performMove = useCallback(async (pos: number, stars: number, heartToConsume?: string) => {
-    if (!self || !game) return;
-    try {
-      if (heartToConsume) {
-        const newCards = self.cards.map(c => c.id === heartToConsume ? { ...c, is_used: true } : c);
-        await supabase.from("players").update({ cards: newCards }).eq("id", self.id);
-      }
-      
-      const { error: upErr } = await supabase
-        .from("players")
-        .update({ position: pos, stars: self.stars + stars })
-        .eq("id", self.id);
-      if (upErr) throw upErr;
-      await reload();
-      setMovedRound(game.current_round);
-      void sendMoveDone(self.id, self.name, pos);
-      void sendSignal();
-    } catch (e) {
-      console.error(e);
-    }
-  }, [self, game, supabase, reload, sendMoveDone, sendSignal]);
 
   // boardPlayers 只在棋盤可見時才更新，確保動畫在玩家看到棋盤後才播放
   const [boardPlayers, setBoardPlayers] = useState(players);
