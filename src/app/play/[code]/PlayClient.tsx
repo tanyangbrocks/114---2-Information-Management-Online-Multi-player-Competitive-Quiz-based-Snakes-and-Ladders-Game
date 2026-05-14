@@ -12,6 +12,8 @@ import { MotionWrapper } from "@/components/MotionWrapper";
 import { Loader2, Sparkles, User, Radio, SkipForward, Heart } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, use, useCallback } from "react";
 import { moveBySteps } from "@/lib/game/boardEngine";
+import { castSkill } from "@/app/actions/skills";
+import { respondToSkillCounter } from "@/app/actions/resolveSkills";
 
 
 type Props = {
