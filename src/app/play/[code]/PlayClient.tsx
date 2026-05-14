@@ -1,7 +1,6 @@
 "use client";
 
 import { BoardGrid } from "@/components/BoardGrid";
-import { QuizModal } from "@/components/QuizModal";
 import { useCardDraw } from "@/hooks/useCardDraw";
 import { useGameRealtime } from "@/hooks/useGameRealtime";
 import { rankPlayers } from "@/lib/game/ranking";
@@ -9,7 +8,7 @@ import { createClient } from "@/lib/supabase/browser";
 import { usePlayerSessionStore } from "@/store/playerSessionStore";
 import type { QuizChoice } from "@/types/game";
 import { Loader2, Sparkles, User, Radio, SkipForward } from "lucide-react";
-import { useEffect, useMemo, useState, use } from "react";
+import { useEffect, useMemo, useRef, useState, use } from "react";
 import { moveBySteps } from "@/lib/game/boardEngine";
 
 
