@@ -20,7 +20,7 @@ export function HostGameClient({ params }: Props) {
   const searchParams = useSearchParams();
   const hostSecret = searchParams.get("hostSecret") ?? "";
 
-  const { game, players, status, error, reload, sendSignal } = useGameRealtime(gameId);
+  const { game, players, skillActions, status, error, reload, sendSignal } = useGameRealtime(gameId);
   const supabase = useMemo(() => createClient(), []);
   const [busy, setBusy] = useState<"send" | "next" | null>(null);
 
@@ -128,13 +128,30 @@ export function HostGameClient({ params }: Props) {
     }
   };
 
+  const [waitingActionId, setWaitingActionId] = useState<string | null>(null);
+  const [waitingTargetName, setWaitingTargetName] = useState<string | null>(null);
+
+  // 當技能列表更新時，同步反制等待狀態
+  useEffect(() => {
+    if (!skillActions || !waitingActionId) return;
+    const stillWaiting = skillActions.some(a => a.id === waitingActionId && a.status === 'waiting_counter');
+    if (!stillWaiting) {
+      setWaitingActionId(null);
+      setWaitingTargetName(null);
+    }
+  }, [skillActions, waitingActionId]);
+
   const settleMoves = async () => {
     if (!game) return;
     setBusy("next");
     try {
       const res = await resolveSkillsAndStartSettle(game.id, game.current_round);
       if (res.waitingForCounter) {
-        alert(`正在等待玩家 ${res.targetName} 決定是否消耗菱形反制技能...`);
+        setWaitingActionId(res.actionId);
+        setWaitingTargetName(res.targetName);
+      } else {
+        setWaitingActionId(null);
+        setWaitingTargetName(null);
       }
       await reload();
       await sendSignal();
@@ -257,14 +274,22 @@ export function HostGameClient({ params }: Props) {
               </button>
             )}
             {game.phase === "skill" && (
-              <button
-                onClick={settleMoves}
-                disabled={busy !== null}
-                className="pudding-button bg-milky-apricot text-milky-brown hover:opacity-90 flex items-center gap-2 shadow-lg"
-              >
-                {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />}
-                執行結算
-              </button>
+              <div className="flex items-center gap-4">
+                {waitingActionId && (
+                  <div className="flex items-center gap-2 bg-milky-accent/20 border-2 border-milky-accent px-4 py-2 rounded-2xl animate-pulse">
+                     <Loader2 className="h-4 w-4 animate-spin text-milky-accent" />
+                     <span className="text-xs font-black text-milky-brown uppercase tracking-widest">等待 {waitingTargetName} 反制中</span>
+                  </div>
+                )}
+                <button
+                  onClick={settleMoves}
+                  disabled={busy !== null || !!waitingActionId}
+                  className="pudding-button bg-milky-apricot text-milky-brown hover:opacity-90 flex items-center gap-2 shadow-lg"
+                >
+                  {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />}
+                  執行結算
+                </button>
+              </div>
             )}
             {game.phase === "settle" && (
               <button

@@ -16,8 +16,11 @@ function isSuit(v: unknown): v is Suit {
 export function parseRoundsConfig(raw: unknown): RoundConfig[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((item) => {
-    const answer = (item as { answer?: unknown }).answer;
-    return { answer: isQuizChoice(answer) ? answer : "A" };
+    const o = item as { answer?: unknown; question_text?: unknown };
+    return { 
+      answer: isQuizChoice(o.answer) ? o.answer : "A",
+      question_text: typeof o.question_text === "string" ? o.question_text : ""
+    };
   });
 }
 

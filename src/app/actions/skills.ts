@@ -77,7 +77,7 @@ export async function castSkill(
       action_type: actionType,
       target_player_id: targetPlayerId || null,
       consumed_cards: consumedCards,
-      metadata: metadata || null,
+      metadata: metadata || {},
       status: "pending"
     });
 

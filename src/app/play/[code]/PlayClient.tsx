@@ -9,12 +9,12 @@ import { usePlayerSessionStore } from "@/store/playerSessionStore";
 import { type QuizChoice, type GameCard } from "@/types/game";
 import { calculateAvailableSkills, countSuits, getAvailableCards, type AvailableSkill } from "@/lib/game/skillEngine";
 import { MotionWrapper } from "@/components/MotionWrapper";
-import { Loader2, Sparkles, User, Radio, SkipForward, Heart } from "lucide-react";
+import { Loader2, Sparkles, User, Radio, SkipForward, Heart, CheckCircle2, MessageCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, use, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { moveBySteps } from "@/lib/game/boardEngine";
 import { castSkill } from "@/app/actions/skills";
 import { respondToSkillCounter } from "@/app/actions/resolveSkills";
-
 
 type Props = {
   params: Promise<{ code: string }>;
@@ -30,6 +30,8 @@ export function PlayClient({ params }: Props) {
   const [joinError, setJoinError] = useState<string | null>(null);
   const [answerBusy, setAnswerBusy] = useState(false);
   const [answerFeedback, setAnswerFeedback] = useState<"O" | "X" | null>(null);
+  const [skillTimer, setSkillTimer] = useState(30);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(true);
 
   const { drawForSlot } = useCardDraw();
 
@@ -56,8 +58,6 @@ export function PlayClient({ params }: Props) {
   const setPlayerId = usePlayerSessionStore((s) => s.setPlayerId);
 
   const self = useMemo(() => players.find((p) => p.id === playerId), [players, playerId]);
-
-  // 移除了手動建立頻道的邏輯，改用 Hook 提供的 sendSignal
 
   const joinGame = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,13 +97,6 @@ export function PlayClient({ params }: Props) {
 
     setAnswerBusy(true);
     try {
-      const cfg = game.rounds_config[game.current_round - 1];
-      const isCorrect = cfg?.answer === choice;
-      
-      // 顯示回饋動畫
-      setAnswerFeedback(isCorrect ? "O" : "X");
-      setTimeout(() => setAnswerFeedback(null), 2000);
-
       const newAnswers = { ...self.answers, [roundKey]: choice };
       const { error: upErr } = await supabase
         .from("players")
@@ -119,19 +112,21 @@ export function PlayClient({ params }: Props) {
     }
   };
 
-  // 處理抽卡邏輯 (當主辦方進入 reveal 階段)
   useEffect(() => {
     if (game?.phase === "reveal" && self && gameId) {
       const alreadyDrawn = self.cards.some((c) => c.round === game.current_round);
       if (!alreadyDrawn) {
         const roundKey = String(game.current_round);
         const choice = self.answers[roundKey];
-        if (!choice) return; // 沒答題就沒卡
+        if (!choice) return;
 
         const cfg = game.rounds_config[game.current_round - 1];
         if (!cfg) return;
 
         const isCorrect = cfg.answer === choice;
+        setAnswerFeedback(isCorrect ? "O" : "X");
+        setTimeout(() => setAnswerFeedback(null), 3000);
+
         const card = drawForSlot(isCorrect ? 2 : 1, game.current_round);
         const newCards = [...self.cards, card];
 
@@ -147,50 +142,32 @@ export function PlayClient({ params }: Props) {
     }
   }, [game?.phase, game?.current_round, game?.rounds_config, self, gameId, drawForSlot, reload, sendSignal, supabase]);
 
-  // 用 ref 記錄「已結算的回合編號」，防止 settle useEffect 因 self 改變而無限觸發
   const settledRoundRef = useRef<number>(-1);
-
-  // 記錄玩家「已完成移動的回合編號」，移動完畢後立即關閉等待 modal
-  const [movedRound, setMovedRound] = useState<number>(-1);
-
-  // 技能相關狀態
   const [skillBusy, setSkillBusy] = useState(false);
   const [skillPreview, setSkillPreview] = useState<AvailableSkill | null>(null);
   const [selectedTarget, setSelectedTarget] = useState<string>("");
   const [cDirection, setCDirection] = useState<1 | -1 | null>(null);
-
-  // 判斷玩家是否已完成技能階段的行動
   const [hasActedSkillState, setHasActedSkillState] = useState(false);
+
   const hasActedSkill = useMemo(() => {
     if (hasActedSkillState) return true;
     if (!self || !skillActions) return false;
-    const myActions = skillActions.filter(a => a.player_id === self.id && a.action_type !== 'PASS');
-    const hasPassed = skillActions.some(a => a.player_id === self.id && a.action_type === 'PASS');
-    
-    if (hasPassed) return true;
+    const myActions = skillActions.filter(a => a.player_id === self.id);
     if (myActions.length === 0) return false;
-
-    // 取得最後一筆動作
     const lastAction = myActions[myActions.length - 1];
-    
-    // 如果最後一次是 S-2 且已解決，則允許再次發動技能 (除非已經發動過兩次，防禦性限制)
     if (lastAction.action_type === "S-2" && lastAction.status === "resolved" && myActions.length < 2) {
       return false;
     }
-    
     return true;
   }, [self, skillActions, hasActedSkillState]);
 
-  // 計算被動與預計步數
   const { passiveModifier, predictedSteps, suitCounts } = useMemo(() => {
     if (!self || !game) return { passiveModifier: 0, predictedSteps: 0, suitCounts: { S: 0, C: 0, D: 0, H: 0 } };
     const available = getAvailableCards(self.cards);
     const counts = countSuits(available);
-    const modifier = counts.S - counts.C; // 黑桃+1, 梅花-1
-    
+    const modifier = counts.S - counts.C;
     const currentRoundCard = self.cards.find(c => c.round === game.current_round);
     const baseSteps = currentRoundCard?.points || 0;
-    
     return { 
       passiveModifier: modifier, 
       predictedSteps: Math.max(0, baseSteps + modifier),
@@ -198,9 +175,8 @@ export function PlayClient({ params }: Props) {
     };
   }, [self, game]);
 
-  // 同步數值到資料庫，讓主辦方能看見
   useEffect(() => {
-    if (self && self.predicted_steps !== predictedSteps) {
+    if (self && (self.predicted_steps !== predictedSteps || self.passive_modifiers !== passiveModifier)) {
       void supabase.from("players").update({ 
         predicted_steps: predictedSteps, 
         passive_modifiers: passiveModifier 
@@ -214,7 +190,40 @@ export function PlayClient({ params }: Props) {
     return calculateAvailableSkills(self.cards || [], players.filter(p => p.id !== self.id), self.position);
   }, [self, players]);
 
-  // 當回合改變時重置技能狀態
+  const handleSkipSkill = useCallback(async () => {
+    if (!game || !self) return;
+    setSkillBusy(true);
+    try {
+      const res = await castSkill(game.id, game.current_round, self.id, "PASS", []);
+      if (res.success) {
+        setHasActedSkillState(true);
+        setIsDrawerOpen(false);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSkillBusy(false);
+    }
+  }, [game, self]);
+
+  useEffect(() => {
+    if (game?.phase !== "skill" || hasActedSkill || !self) {
+      setSkillTimer(30);
+      return;
+    }
+    const interval = setInterval(() => {
+      setSkillTimer((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          void handleSkipSkill();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [game?.phase, hasActedSkill, self, handleSkipSkill]);
+
   useEffect(() => {
     setSkillPreview(null);
     setSelectedTarget("");
@@ -222,13 +231,12 @@ export function PlayClient({ params }: Props) {
     setPendingCounter(null);
     setSnakeTarget(null);
     setHasActedSkillState(false);
+    setIsDrawerOpen(true);
   }, [game?.current_round]);
 
-  // 反制相關狀態
   const [pendingCounter, setPendingCounter] = useState<{ id: string, action_type: string } | null>(null);
   const [snakeTarget, setSnakeTarget] = useState<{ position: number, starsGained: number, cards: GameCard[] } | null>(null);
 
-  // 監聽是否有需要自己反制的技能
   useEffect(() => {
     if (!self || !skillActions) return;
     const counterAction = skillActions.find(a => a.target_player_id === self.id && a.status === 'waiting_counter');
@@ -242,14 +250,12 @@ export function PlayClient({ params }: Props) {
   const performMove = useCallback(async (pos: number, stars: number, heartToConsume?: string) => {
     if (!self || !game) return;
     try {
-      // 標記該回合使用的移動卡為已使用，若有 U-3 額外消耗也處理
       const updatedCards = self.cards.map(c => {
         if (c.round === game.current_round || c.id === heartToConsume) {
           return { ...c, is_used: true };
         }
         return c;
       });
-      
       const { error: upErr } = await supabase
         .from("players")
         .update({ 
@@ -258,10 +264,8 @@ export function PlayClient({ params }: Props) {
           cards: updatedCards
         })
         .eq("id", self.id);
-
       if (upErr) throw upErr;
       await reload();
-      setMovedRound(game.current_round);
       void sendMoveDone(self.id, self.name, pos);
       void sendSignal();
     } catch (e) {
@@ -269,157 +273,40 @@ export function PlayClient({ params }: Props) {
     }
   }, [self, game, supabase, reload, sendMoveDone, sendSignal]);
 
-  // 處理移動邏輯 (當主辦方進入 settle 階段)
   useEffect(() => {
     if (game?.phase === "settle" && self && gameId) {
-      // 如果這個回合已經結算過，直接跳過
       if (settledRoundRef.current === game.current_round) return;
-
       const card = self.cards.find((c) => c.round === game.current_round);
-      if (!card) return;
-
-      // 先標記為「已結算」，防止重複執行
+      if (!card || card.is_used) return;
       settledRoundRef.current = game.current_round;
-
       const move = moveBySteps(self.position, card.points, {
         spades: suitCounts.S,
         clubs: suitCounts.C
       });
-      
-      // 偵測是否遇到蛇 (掉落步數 > 0)
       if (move.position < (self.position + card.points + suitCounts.S - suitCounts.C)) {
         const hearts = self.cards.filter(c => !c.is_used && c.suit === 'H');
         if (hearts.length > 0) {
-          // 彈出紅心抵銷提示
           setSnakeTarget({ position: move.position, starsGained: move.starsGained, cards: hearts });
           return;
         }
       }
-
       void performMove(move.position, move.starsGained);
     }
   }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, sendMoveDone, supabase, performMove, suitCounts.S, suitCounts.C]);
 
-  // boardPlayers 只在棋盤可見時才更新，確保動畫在玩家看到棋盤後才播放
-  const [boardPlayers, setBoardPlayers] = useState(players);
-
-  // 結算移動完成後（movedRound 改變），此時 players 已包含新位置，觸發棋盤更新與動畫
-  useEffect(() => {
-    setBoardPlayers(players);
-  }, [movedRound]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // 在非遮蓋階段（回合間、大廳、結束）也即時同步棋盤顯示
-  useEffect(() => {
-    const phase = game?.phase;
-    if (phase === "between_rounds" || phase === "lobby" || phase === "finished") {
-      setBoardPlayers(players);
-    }
-  }, [game?.phase, players]);
-
-  if (lookupError) {
-    return (
-      <main className="mx-auto max-w-lg px-4 py-12">
-        <p className="text-milky-brown font-bold opacity-60">{lookupError}</p>
-      </main>
-    );
-  }
-
-  if (!gameId || status === "loading" || status === "idle") {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center text-milky-brown">
-        <Loader2 className="h-10 w-10 animate-spin opacity-40" />
-      </div>
-    );
-  }
-
-  if (error || !game) {
-    return (
-      <main className="mx-auto max-w-lg px-4 py-12">
-        <p className="text-milky-brown font-bold opacity-60">{error ?? "無法載入場次"}</p>
-      </main>
-    );
-  }
-
-  if (!playerId || !self) {
-    return (
-      <main className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4 py-10 page-fade-in">
-        <MotionWrapper type="bounce" className="pudding-card">
-          <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-milky-apricot/30 text-milky-brown">
-              <User className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-milky-brown/60">PLAYER JOIN</p>
-              <h1 className="text-2xl font-black text-milky-brown">加入冒險</h1>
-            </div>
-          </div>
-          <form className="space-y-5" onSubmit={joinGame}>
-            <label className="block space-y-2">
-              <span className="text-sm font-bold text-milky-brown/80 ml-1">冒險者稱號</span>
-              <input
-                required
-                value={joinName}
-                onChange={(e) => setJoinName(e.target.value)}
-                className="w-full rounded-2xl border-2 border-milky-beige bg-white/50 px-4 py-3 text-milky-brown outline-none ring-milky-apricot/50 focus:border-milky-apricot focus:ring-4"
-                placeholder="輸入您的名字..."
-              />
-            </label>
-            {joinError && <p className="text-sm font-bold text-milky-brown/60 ml-1">＊{joinError}</p>}
-            <button
-              type="submit"
-              disabled={joinBusy}
-              className="pudding-button-primary w-full text-lg shadow-milky-apricot/20"
-            >
-              {joinBusy ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : (
-                <span className="flex items-center justify-center gap-2">
-                   <Sparkles className="h-5 w-5" />
-                   開始冒險
-                </span>
-              )}
-            </button>
-          </form>
-        </MotionWrapper>
-      </main>
-    );
-  }
-
-  const roundKey = String(game.current_round);
-  // 是否需要答題：在題目階段且還沒答
-  const needsAnswer = game.phase === "question" && !self.answers[roundKey];
-  // 是否已答題但在等公布：在題目階段且已答
-  const isWaitingReveal = game.phase === "question" && !!self.answers[roundKey];
-  // 是否正在看抽卡結果：在公布階段
-  const isShowingReveal = game.phase === "reveal";
-  // 是否在發動技能：在技能階段
-  const isSkillPhase = game.phase === "skill";
-  // 是否在等待結算：在結算階段且玩家尚未移動完畢
-  const isWaitingSettle = game.phase === "settle" && movedRound !== game.current_round;
-  const isCounterPhase = !!pendingCounter || !!snakeTarget;
-  
   const handleCastSkill = async (skill: AvailableSkill) => {
     if (!game || !self) return;
-    
-    // 再次檢查是否有菱形轉化或足夠卡片
     const availableCards = getAvailableCards(self.cards);
-    
     setSkillBusy(true);
     try {
-      // 根據技能類型準備消耗與參數
       let consumed: string[] = [];
       const counts = countSuits(availableCards);
-
-      // 自動選卡邏輯
-      if (skill.actionType === "U-3") {
-        consumed = availableCards.map(c => c.id);
-      } else if (skill.actionType === "S-1") {
-        consumed = [availableCards.find(c => c.suit === "S")?.id].filter(Boolean) as string[];
-      } else if (skill.actionType === "S-2") {
-        consumed = availableCards.filter(c => c.suit === "S").slice(0, 2).map(c => c.id);
-      } else if (skill.actionType === "C-1") {
-        consumed = [availableCards.find(c => c.suit === "C")?.id].filter(Boolean) as string[];
-      } else if (skill.actionType === "C-2") {
-        consumed = availableCards.filter(c => c.suit === "C").slice(0, 2).map(c => c.id);
-      } else if (skill.actionType === "U-1") {
+      if (skill.actionType === "U-3") consumed = availableCards.map(c => c.id);
+      else if (skill.actionType === "S-1") consumed = [availableCards.find(c => c.suit === "S")?.id].filter(Boolean) as string[];
+      else if (skill.actionType === "S-2") consumed = availableCards.filter(c => c.suit === "S").slice(0, 2).map(c => c.id);
+      else if (skill.actionType === "C-1") consumed = [availableCards.find(c => c.suit === "C")?.id].filter(Boolean) as string[];
+      else if (skill.actionType === "C-2") consumed = availableCards.filter(c => c.suit === "C").slice(0, 2).map(c => c.id);
+      else if (skill.actionType === "U-1") {
         const suitToUse = (["S", "C", "H", "D"] as const).find(s => counts[s] >= 3) || 
                           (["S", "C", "H"] as const).find(s => counts[s] >= 2 && counts.D >= 1);
         if (suitToUse) {
@@ -434,438 +321,279 @@ export function PlayClient({ params }: Props) {
         consumed = suits.map(s => availableCards.find(c => c.suit === s)?.id).filter(Boolean) as string[];
       }
 
-      // 組合 metadata (例如 C-1/C-2 的方向)
-      const metadata = cDirection ? { direction: cDirection } : undefined;
-
-      const res = await castSkill(
-        game.id, 
-        game.current_round, 
-        self.id, 
-        skill.actionType, 
-        consumed, 
-        selectedTarget || undefined,
-        metadata
-      );
-
-      if (skill.actionType === "U-3") {
-         // 模擬隨機抽卡動畫
-         await new Promise(r => setTimeout(r, 1500));
-      }
-
+      const res = await castSkill(game.id, game.current_round, self.id, skill.actionType, consumed, selectedTarget || undefined, cDirection ? { direction: cDirection } : undefined);
       if (res.success) {
-        // 特別處理 S-2：如果抽完卡，重設狀態允許再次發動
-        if (skill.actionType === "S-2") {
-          setHasActedSkillState(false);
-          // 這裡可以加上一個小動畫效果標記
-        } else {
-          setHasActedSkillState(true);
-        }
+        if (skill.actionType !== "S-2") setHasActedSkillState(true);
         setSkillPreview(null);
         setSelectedTarget("");
         setCDirection(null);
         await reload();
-      } else {
-        alert("發動失敗: " + res.error);
       }
-    } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : String(e));
+    } catch (e) {
+      alert(String(e));
     } finally {
       setSkillBusy(false);
     }
   };
 
-  const handleSkipSkill = async () => {
-    if (!game || !self) return;
-    setSkillBusy(true);
-    try {
-      const res = await castSkill(game.id, game.current_round, self.id, "PASS", []);
-      if (res.success) {
-        setHasActedSkillState(true);
-      } else {
-        alert("略過失敗: " + res.error);
-      }
-    } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSkillBusy(false);
-    }
-  };
+  if (lookupError) return <main className="mx-auto max-w-lg px-4 py-12"><p className="text-milky-brown font-bold opacity-60">{lookupError}</p></main>;
+  if (!gameId || status === "loading" || status === "idle") return <div className="flex min-h-[50vh] items-center justify-center text-milky-brown"><Loader2 className="h-10 w-10 animate-spin opacity-40" /></div>;
+  if (error || !game) return <main className="mx-auto max-w-lg px-4 py-12"><p className="text-milky-brown font-bold opacity-60">{error ?? "無法載入場次"}</p></main>;
+
+  if (!playerId || !self) {
+    return (
+      <main className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4 py-10 page-fade-in">
+        <MotionWrapper type="bounce" className="pudding-card">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-milky-apricot/30 text-milky-brown"><User className="h-6 w-6" /></div>
+            <div><p className="text-[10px] font-bold uppercase tracking-widest text-milky-brown/60">PLAYER JOIN</p><h1 className="text-2xl font-black text-milky-brown">加入冒險</h1></div>
+          </div>
+          <form className="space-y-5" onSubmit={joinGame}>
+            <input required value={joinName} onChange={(e) => setJoinName(e.target.value)} className="w-full rounded-2xl border-2 border-milky-beige bg-white/50 px-4 py-3 text-milky-brown outline-none" placeholder="輸入您的名字..." />
+            <button type="submit" disabled={joinBusy} className="pudding-button-primary w-full shadow-milky-apricot/20">{joinBusy ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : "開始冒險"}</button>
+          </form>
+        </MotionWrapper>
+      </main>
+    );
+  }
+
+  const roundKey = String(game.current_round);
+  const needsAnswer = game.phase === "question" && !self.answers[roundKey];
+  const isWaitingReveal = game.phase === "question" && !!self.answers[roundKey];
+  const isShowingReveal = game.phase === "reveal";
+  const isSkillPhase = game.phase === "skill";
+  const isWaitingSettle = game.phase === "settle" && !self.cards.find(c => c.round === game.current_round)?.is_used;
+  const isCounterPhase = !!pendingCounter || !!snakeTarget;
+
+  const currentRoundCard = self.cards.find(c => c.round === game.current_round);
+  const correctChoice = game.rounds_config[game.current_round - 1]?.answer;
 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 lg:flex-row lg:items-start">
       <section className="flex-1 space-y-4">
-        {/* 答題回饋遮罩 */}
-        {answerFeedback && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none">
-            <MotionWrapper type="bounce" className="flex items-center justify-center">
-              <div className={`flex h-40 w-40 items-center justify-center rounded-full border-8 bg-white/90 backdrop-blur-md shadow-2xl ${answerFeedback === 'O' ? 'border-milky-apricot text-milky-apricot' : 'border-milky-brown/40 text-milky-brown/40'}`}>
-                 <span className="text-8xl font-black">{answerFeedback}</span>
+        <AnimatePresence>
+          {answerFeedback && (
+            <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 2, opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none">
+              <div className={`flex h-64 w-64 items-center justify-center rounded-full border-[16px] bg-white/90 backdrop-blur-xl shadow-2xl ${answerFeedback === 'O' ? 'border-milky-apricot text-milky-apricot' : 'border-milky-brown/20 text-milky-brown/40'}`}>
+                 <span className="text-[12rem] font-black leading-none">{answerFeedback}</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {isSkillPhase && !hasActedSkill && (
+          <div className="fixed top-0 left-0 right-0 z-[100] h-2 bg-milky-white/50">
+            <motion.div className="h-full bg-gradient-to-r from-milky-brown via-milky-accent to-milky-apricot" initial={{ width: "100%" }} animate={{ width: `${(skillTimer / 30) * 100}%` }} transition={{ duration: 1, ease: "linear" }} />
+          </div>
+        )}
+
+        <div className="fixed top-6 right-6 z-[60] flex flex-col items-end gap-3 pointer-events-none">
+          <AnimatePresence mode="popLayout">
+            {(answerBusy || skillBusy) && (
+              <motion.div key="busy" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 50, opacity: 0 }} className="flex items-center gap-3 bg-white/95 backdrop-blur-md px-5 py-3 rounded-2xl shadow-xl border border-milky-beige/50 pointer-events-auto">
+                <Loader2 className="h-5 w-5 animate-spin text-milky-brown" />
+                <span className="text-xs font-black text-milky-brown uppercase tracking-widest">{answerBusy ? "送出答案中" : skillBusy ? "技能處理中" : "同步狀態中"}</span>
+              </motion.div>
+            )}
+            {isWaitingReveal && (
+              <motion.div key="waiting-reveal" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 50, opacity: 0 }} className="flex items-center gap-3 bg-milky-brown text-white px-5 py-3 rounded-2xl shadow-xl pointer-events-auto">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span className="text-xs font-black uppercase tracking-widest">等待公布答案</span>
+              </motion.div>
+            )}
+            {isSkillPhase && hasActedSkill && (
+              <motion.div key="waiting-skill" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 50, opacity: 0 }} className="flex items-center gap-3 bg-milky-accent text-white px-5 py-3 rounded-2xl shadow-xl pointer-events-auto">
+                <MessageCircle className="h-5 w-5 animate-pulse" />
+                <span className="text-xs font-black uppercase tracking-widest">等待其他玩家施法</span>
+              </motion.div>
+            )}
+            {isWaitingSettle && (
+              <motion.div key="waiting-settle" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 50, opacity: 0 }} className="flex items-center gap-3 bg-milky-apricot text-white px-5 py-3 rounded-2xl shadow-xl pointer-events-auto">
+                <SkipForward className="h-5 w-5 animate-pulse" />
+                <span className="text-xs font-black uppercase tracking-widest">其他玩家移動中</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {isShowingReveal && (
+          <MotionWrapper type="bounce" className="space-y-4">
+            <div className="pudding-card !bg-white/90 border-milky-beige flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="h-12 w-12 rounded-2xl bg-milky-brown text-white flex items-center justify-center shadow-lg"><CheckCircle2 className="h-6 w-6" /></div>
+                <div>
+                   <p className="text-[10px] font-black text-milky-brown/40 uppercase tracking-widest mb-1">Correct Answer Is</p>
+                   <h2 className="text-3xl font-black text-milky-brown tracking-tighter">選項 {correctChoice}</h2>
+                   <p className="text-sm font-bold text-milky-brown/60 italic">{game.rounds_config[game.current_round - 1]?.question_text || "正確答案"}</p>
+                </div>
+              </div>
+              <div className="bg-milky-beige/30 px-6 py-3 rounded-2xl">
+                 <p className="text-sm font-black text-milky-brown/60">您的選擇：{self.answers[roundKey] || "未作答"}</p>
+              </div>
+            </div>
+
+            {currentRoundCard && (
+              <div className="pudding-card !bg-milky-accent/10 border-milky-accent/20 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                   <div className="h-12 w-12 rounded-2xl bg-milky-accent text-white flex items-center justify-center shadow-lg"><Sparkles className="h-6 w-6" /></div>
+                   <div>
+                      <p className="text-[10px] font-black text-milky-accent uppercase tracking-widest mb-1">Obtained Card</p>
+                      <h2 className="text-2xl font-black text-milky-brown tracking-tighter">{currentRoundCard.name}</h2>
+                   </div>
+                </div>
+                <div className="text-right">
+                   <p className="text-3xl font-black text-milky-accent">+{currentRoundCard.points} 步</p>
+                </div>
+              </div>
+            )}
+          </MotionWrapper>
+        )}
+
+        {(needsAnswer || isCounterPhase) && (
+          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-milky-brown/60 p-4 backdrop-blur-sm transition-all">
+            <MotionWrapper type="bounce" className="w-full max-w-sm">
+              <div className="pudding-card overflow-y-auto max-h-[90vh] shadow-2xl border-4 border-white">
+                {isCounterPhase && (
+                  <div className="space-y-8 py-4 text-center">
+                    <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-milky-apricot/20 text-milky-brown shadow-inner"><Sparkles className="h-12 w-12 animate-pulse" /></div>
+                    {pendingCounter && (
+                      <div className="space-y-6">
+                        <h2 className="text-3xl font-black text-milky-brown">技能攔截！</h2>
+                        <p className="text-sm font-bold text-milky-brown/60">對手發動了 {pendingCounter.action_type}。消耗 2 張菱形反制？</p>
+                        <div className="flex gap-4 pt-4">
+                          <button onClick={() => respondToSkillCounter(pendingCounter.id, true)} className="pudding-button-primary flex-1 bg-milky-accent text-white">是</button>
+                          <button onClick={() => respondToSkillCounter(pendingCounter.id, false)} className="pudding-button-secondary flex-1">否</button>
+                        </div>
+                      </div>
+                    )}
+                    {snakeTarget && (
+                      <div className="space-y-6">
+                        <h2 className="text-3xl font-black text-milky-brown">遭遇危險！</h2>
+                        <p className="text-sm font-bold text-milky-brown/60">即將跌落，消耗 1 張紅心抵銷？</p>
+                        <div className="flex gap-4 pt-4">
+                          <button onClick={() => { 
+                            const hId = snakeTarget.cards[0].id; 
+                            setSnakeTarget(null); 
+                            const moveDist = (currentRoundCard?.points || 0) + suitCounts.S - suitCounts.C;
+                            performMove(self.position + Math.max(0, moveDist), 0, hId); 
+                          }} className="pudding-button-primary flex-1 bg-milky-accent text-white">是</button>
+                          <button onClick={() => { const pos = snakeTarget.position; const stars = snakeTarget.starsGained; setSnakeTarget(null); performMove(pos, stars); }} className="pudding-button-secondary flex-1">否</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {needsAnswer && (
+                  <div className="space-y-8 py-4 text-center">
+                    <h2 className="text-3xl font-black text-milky-brown">第 {game.current_round} 回合</h2>
+                    <div className="grid grid-cols-2 gap-4">
+                      {(['A', 'B', 'C', 'D'] as QuizChoice[]).map((choice) => (
+                        <button key={choice} onClick={() => handleAnswer(choice)} disabled={answerBusy} className="flex h-24 items-center justify-center rounded-[2.5rem] border-b-8 border-milky-beige bg-milky-beige/20 text-5xl font-black text-milky-brown/30 hover:border-milky-apricot hover:bg-milky-apricot/10 hover:text-milky-brown disabled:opacity-50 transition-all">{choice}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </MotionWrapper>
           </div>
         )}
 
-        {/* 主要狀態提示視窗 */}
-        {(needsAnswer || isWaitingReveal || isShowingReveal || isSkillPhase || isWaitingSettle || isCounterPhase) && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-milky-brown/20 p-4 backdrop-blur-sm transition-all">
-            <MotionWrapper type="bounce" className="w-full max-w-sm overflow-hidden">
-              <div className="pudding-card overflow-y-auto max-h-[90vh]">
-              {isCounterPhase && (
-                <div className="space-y-6">
-                  <div className="text-center">
-                    <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-milky-apricot/20 text-milky-brown shadow-inner">
-                      <Sparkles className="h-10 w-10 animate-pulse" />
-                    </div>
-                    {pendingCounter && (
-                      <>
-                        <h2 className="text-2xl font-black text-milky-brown">反制攔截！</h2>
-                        <p className="mt-2 text-milky-brown/70">對手對你發動了 <span className="font-bold text-milky-accent">{pendingCounter.action_type}</span></p>
-                        <p className="mt-4 font-bold text-milky-brown bg-milky-apricot/20 py-2 rounded-xl">是否消耗 2 張菱形抵銷？</p>
-                        <div className="mt-8 flex gap-4">
-                          <button
-                            onClick={() => respondToSkillCounter(pendingCounter.id, true)}
-                            className="pudding-button-primary flex-1 bg-milky-accent text-white hover:opacity-90"
-                          >
-                            是
-                          </button>
-                          <button
-                            onClick={() => respondToSkillCounter(pendingCounter.id, false)}
-                            className="pudding-button-secondary flex-1"
-                          >
-                            否
-                          </button>
-                        </div>
-                      </>
-                    )}
-                    {snakeTarget && (
-                      <>
-                        <h2 className="text-2xl font-black text-milky-brown">遭遇危險！</h2>
-                        <p className="mt-2 text-milky-brown/70">即將掉落。是否消耗 1 張紅心抵銷？</p>
-                        <div className="mt-8 flex gap-4">
-                          <button
-                            onClick={() => {
-                              const hId = snakeTarget.cards[0].id;
-                              setSnakeTarget(null);
-                              const card = self.cards.find((c) => c.round === game.current_round);
-                              performMove(self.position + (card?.points || 0), 0, hId);
-                            }}
-                            className="pudding-button-primary flex-1 !bg-milky-accent text-white"
-                          >
-                            是 (消耗紅心)
-                          </button>
-                          <button
-                            onClick={() => {
-                              const pos = snakeTarget.position;
-                              const stars = snakeTarget.starsGained;
-                              setSnakeTarget(null);
-                              performMove(pos, stars);
-                            }}
-                            className="pudding-button-secondary flex-1"
-                          >
-                            否 (正常掉落)
-                          </button>
-                        </div>
-                      </>
-                    )}
+        {isSkillPhase && !hasActedSkill && (
+          <div className="fixed inset-0 z-[70] pointer-events-none">
+            <div className={`absolute inset-0 bg-black/20 transition-opacity pointer-events-auto ${isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsDrawerOpen(false)} />
+            <motion.div initial={{ y: "100%" }} animate={{ y: isDrawerOpen ? "0%" : "93%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="absolute bottom-0 left-0 right-0 bg-milky-white rounded-t-[4rem] border-t-8 border-white shadow-2xl pointer-events-auto flex flex-col">
+              <div className="flex justify-center py-6 cursor-pointer group" onClick={() => setIsDrawerOpen(!isDrawerOpen)}><div className="w-20 h-2 bg-milky-brown/10 rounded-full group-hover:bg-milky-brown/30" /></div>
+              <div className="px-8 pb-16 overflow-y-auto max-h-[80vh]">
+                <div className="mb-10 flex items-end justify-between">
+                  <h2 className="text-4xl font-black text-milky-brown tracking-tighter">發動冒險技能</h2>
+                  <div className="flex flex-col items-end gap-2">
+                    <p className={`text-2xl font-black ${skillTimer <= 5 ? 'text-milky-accent animate-pulse' : 'text-milky-brown'}`}>{skillTimer}s</p>
+                    <button onClick={handleSkipSkill} className="text-xs font-black text-milky-brown/40 underline">略過</button>
                   </div>
                 </div>
-              )}
-              {needsAnswer && (
-                <div className="space-y-6">
-                  <div className="text-center">
-                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-milky-apricot/20 text-milky-brown">
-                      <Radio className="h-8 w-8" />
-                    </div>
-                    <h2 className="text-2xl font-black text-milky-brown">第 {game.current_round} 回合</h2>
-                    <p className="mt-1 text-sm font-bold text-milky-brown/50">請選擇您的答案</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    {(["A", "B", "C", "D"] as QuizChoice[]).map((choice) => (
-                      <button
-                        key={choice}
-                        onClick={() => handleAnswer(choice)}
-                        disabled={answerBusy}
-                        className="flex h-20 items-center justify-center rounded-3xl border-b-4 border-milky-beige bg-milky-beige/30 text-3xl font-black text-milky-brown/40 transition-all hover:border-milky-apricot hover:bg-milky-apricot/20 hover:text-milky-brown active:translate-y-1 active:border-b-0 disabled:opacity-50"
-                      >
-                        {choice}
+                {availableSkills.length === 0 ? <div className="py-20 text-center bg-white/40 rounded-[4rem] border-4 border-dashed border-milky-beige/50"><p className="text-sm font-black text-milky-brown/20">目前沒有可發動的技能</p></div> : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {availableSkills.map((skill) => (
+                      <button key={skill.actionType} onClick={() => { setSkillPreview(skill); setIsDrawerOpen(false); }} className="group rounded-[3rem] bg-white p-8 text-left shadow-sm border-2 border-transparent hover:border-milky-apricot transition-all hover:shadow-2xl hover:-translate-y-2">
+                        <div className="flex items-center justify-between mb-2"><span className="text-2xl font-black text-milky-brown">{skill.name}</span></div>
+                        <p className="text-xs font-bold text-milky-brown/40 leading-relaxed line-clamp-2">{skill.description}</p>
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
 
-              {isWaitingReveal && (
-                <div className="py-8 text-center">
-                   <div className="glass-banner">
-                      <div className="flex flex-col items-center gap-4">
-                        <Loader2 className="h-12 w-12 animate-spin text-milky-brown/30" />
-                        <h2 className="text-2xl font-black text-milky-brown tracking-widest">等待主辦方公布答案...</h2>
-                      </div>
+        {skillPreview && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-milky-brown/40 backdrop-blur-md">
+            <MotionWrapper type="bounce" className="w-full max-w-sm">
+              <div className="pudding-card shadow-2xl border-4 border-white text-center">
+                 <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-milky-brown text-white shadow-xl"><Sparkles className="h-10 w-10" /></div>
+                 <h3 className="text-3xl font-black text-milky-brown mb-3">{skillPreview.name}</h3>
+                 <p className="text-sm font-bold text-milky-brown/60 mb-8">{skillPreview.description}</p>
+                 {skillPreview.requiresTarget && (
+                    <div className="space-y-4 mb-8"><p className="text-[10px] font-black text-milky-brown/30 uppercase">選擇目標</p>
+                      <div className="grid grid-cols-2 gap-3">{players.filter(p => p.id !== self.id).map(p => (<button key={p.id} onClick={() => setSelectedTarget(p.id)} className={`rounded-3xl border-4 px-4 py-4 text-sm font-black transition-all ${selectedTarget === p.id ? 'border-milky-apricot bg-milky-apricot/10 text-milky-brown' : 'border-milky-beige/30 text-milky-brown/30'}`}>{p.name}</button>))}</div>
+                    </div>
+                 )}
+                 {(skillPreview.actionType === "C-1" || skillPreview.actionType === "C-2") && (
+                   <div className="space-y-4 mb-8"><p className="text-[10px] font-black text-milky-brown/30 uppercase">選擇方向</p>
+                      <div className="flex gap-4"><button onClick={() => setCDirection(1)} className={`flex-1 rounded-3xl border-4 py-5 font-black transition-all ${cDirection === 1 ? 'border-milky-apricot bg-milky-apricot/10 text-milky-brown' : 'border-milky-beige/30 text-milky-brown/30'}`}>前進</button><button onClick={() => setCDirection(-1)} className={`flex-1 rounded-3xl border-4 py-5 font-black transition-all ${cDirection === -1 ? 'border-milky-apricot bg-milky-apricot/10 text-milky-brown' : 'border-milky-beige/30 text-milky-brown/30'}`}>後退</button></div>
                    </div>
-                </div>
-              )}
-
-              {isShowingReveal && (
-                <div className="text-center">
-                  {self.cards.find((c) => c.round === game.current_round) ? (
-                    <div className="space-y-6">
-                      <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-milky-apricot/20 text-milky-brown shadow-lg">
-                        <Sparkles className="h-10 w-10 animate-bounce" />
-                      </div>
-                      <div>
-                        <h2 className="text-2xl font-black text-milky-brown">正確答案已揭曉！</h2>
-                        <p className="text-sm font-bold text-milky-brown/50">恭喜獲得冒險卡片：</p>
-                      </div>
-                      <div className="rounded-3xl border-4 border-milky-apricot/30 bg-milky-white p-6 shadow-inner">
-                        <p className="text-xs font-black uppercase tracking-[0.2em] text-milky-brown/60">
-                          {self.cards.find((c) => c.round === game.current_round)?.name}
-                        </p>
-                        <p className="mt-2 text-4xl font-black text-milky-brown">
-                          +{self.cards.find((c) => c.round === game.current_round)?.points} 步
-                        </p>
-                      </div>
-                      <p className="text-sm font-bold text-milky-brown/30 animate-pulse">主辦方正在結算移動中...</p>
-                    </div>
-                  ) : (
-                    <div className="py-12">
-                      <Loader2 className="mx-auto h-12 w-12 animate-spin text-milky-brown/10" />
-                      <p className="mt-6 font-bold text-milky-brown/40">生成卡片中...</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {isSkillPhase && (
-                <div className="space-y-6">
-                  {skillPreview ? (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-                      <div className="text-center">
-                        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-milky-apricot/30 text-milky-brown">
-                          <Sparkles className="h-8 w-8" />
-                        </div>
-                        <h2 className="text-2xl font-black text-milky-brown">{skillPreview.name}</h2>
-                        <p className="mt-2 text-sm font-bold text-milky-brown/60 leading-relaxed">{skillPreview.description}</p>
-                        <div className="mt-4 inline-block rounded-full bg-milky-beige px-4 py-1 text-xs font-black text-milky-brown/40">
-                          消耗代價：{skillPreview.costDescription}
-                        </div>
-                      </div>
-
-                      {/* 對象選擇邏輯 */}
-                      {skillPreview.requiresTarget && (
-                        <div className="space-y-3">
-                          <p className="text-center text-xs font-black uppercase tracking-widest text-milky-brown/30">請選擇目標玩家</p>
-                          <div className="grid grid-cols-2 gap-2">
-                            {players.filter(p => p.id !== self.id).map(p => (
-                              <button
-                                key={p.id}
-                                onClick={() => setSelectedTarget(p.id)}
-                                className={`flex items-center gap-3 rounded-2xl border-2 p-3 transition-all ${
-                                  selectedTarget === p.id 
-                                    ? "border-milky-apricot bg-milky-apricot/10 shadow-sm" 
-                                    : "border-milky-beige bg-white/50 grayscale opacity-60"
-                                }`}
-                              >
-                                <div className="h-8 w-8 rounded-full bg-milky-brown flex items-center justify-center text-white font-black text-xs">
-                                  {p.name[0].toUpperCase()}
-                                </div>
-                                <span className="text-sm font-black text-milky-brown truncate">{p.name}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* 方向選擇邏輯 (C-1, C-2) */}
-                      {(skillPreview.actionType === "C-1" || skillPreview.actionType === "C-2") && (
-                        <div className="space-y-3">
-                           <p className="text-center text-xs font-black uppercase tracking-widest text-milky-brown/30">請選擇移動方向</p>
-                           <div className="flex gap-4">
-                              <button 
-                                onClick={() => setCDirection(1)}
-                                className={`flex-1 rounded-2xl border-2 py-4 font-black transition-all ${cDirection === 1 ? 'border-milky-apricot bg-milky-apricot/20 text-milky-brown' : 'border-milky-beige text-milky-brown/30'}`}
-                              >
-                                前進 (+1)
-                              </button>
-                              <button 
-                                onClick={() => setCDirection(-1)}
-                                className={`flex-1 rounded-2xl border-2 py-4 font-black transition-all ${cDirection === -1 ? 'border-milky-apricot bg-milky-apricot/20 text-milky-brown' : 'border-milky-beige text-milky-brown/30'}`}
-                              >
-                                後退 (-1)
-                              </button>
-                           </div>
-                        </div>
-                      )}
-
-                      <div className="flex gap-3 pt-4">
-                         <button
-                           onClick={() => {
-                             setSkillPreview(null);
-                             setSelectedTarget("");
-                             setCDirection(null);
-                           }}
-                           className="pudding-button-secondary flex-1"
-                         >
-                           取消
-                         </button>
-                         <button
-                           disabled={skillBusy || (skillPreview.requiresTarget && !selectedTarget) || ((skillPreview.actionType === 'C-1' || skillPreview.actionType === 'C-2') && !cDirection)}
-                           onClick={() => handleCastSkill(skillPreview)}
-                           className="pudding-button-primary flex-1"
-                         >
-                           {skillBusy ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : "確認發動"}
-                         </button>
-                      </div>
-                    </div>
-                  ) : hasActedSkill ? (
-                    <div className="py-8 text-center animate-in zoom-in">
-                       <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-milky-apricot text-white shadow-lg">
-                          <SkipForward className="h-8 w-8" />
-                       </div>
-                       <h2 className="text-2xl font-black text-milky-brown">已完成發動</h2>
-                       <p className="mt-1 text-sm font-bold text-milky-brown/40">等待其他冒險者...</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      <div className="text-center">
-                        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-milky-apricot/30 text-milky-brown">
-                          <Sparkles className="h-8 w-8" />
-                        </div>
-                        <h2 className="text-2xl font-black text-milky-brown">發動卡片能力？</h2>
-                        <p className="mt-1 text-sm font-bold text-milky-brown/50">請選擇要使用的冒險卡組合</p>
-                      </div>
-                      <div className="grid gap-3">
-                        {availableSkills.map((skill) => (
-                          <button
-                            key={skill.actionType}
-                            onClick={() => setSkillPreview(skill)}
-                            className="group flex items-center justify-between rounded-3xl border-2 border-milky-beige bg-white/50 p-4 transition-all hover:border-milky-apricot hover:bg-milky-apricot/10"
-                          >
-                            <div className="text-left">
-                               <p className="text-lg font-black text-milky-brown">{skill.name}</p>
-                               <p className="text-[10px] font-bold text-milky-brown/40 uppercase tracking-widest">{skill.costDescription}</p>
-                            </div>
-                            <div className="h-8 w-8 rounded-full border-2 border-milky-beige flex items-center justify-center group-hover:bg-milky-apricot group-hover:border-milky-apricot transition-colors">
-                               <SkipForward className="h-4 w-4 text-milky-beige group-hover:text-white" />
-                            </div>
-                          </button>
-                        ))}
-                        <button
-                          onClick={handleSkipSkill}
-                          disabled={skillBusy}
-                          className="mt-2 text-sm font-black text-milky-brown/30 underline decoration-2 underline-offset-4 hover:text-milky-brown transition-colors"
-                        >
-                          本次不發動
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {isWaitingSettle && (
-                <div className="py-10 text-center">
-                   <div className="glass-banner">
-                      <div className="flex flex-col items-center gap-4">
-                        <SkipForward className="h-16 w-16 animate-pulse text-milky-brown/20" />
-                        <h2 className="text-3xl font-black text-milky-brown tracking-widest">全員準備出發！</h2>
-                        <p className="font-bold text-milky-brown/40">即將開始同步滑行移動...</p>
-                      </div>
-                   </div>
-                </div>
-              )}
+                 )}
+                 <div className="flex gap-4"><button onClick={() => { setSkillPreview(null); setIsDrawerOpen(true); }} className="pudding-button-secondary flex-1">返回</button><button disabled={skillBusy || (skillPreview.requiresTarget && !selectedTarget) || ((skillPreview.actionType === 'C-1' || skillPreview.actionType === 'C-2') && !cDirection)} onClick={() => handleCastSkill(skillPreview)} className="pudding-button-primary flex-1 shadow-milky-apricot/30">{skillBusy ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : "確認發動"}</button></div>
               </div>
             </MotionWrapper>
           </div>
         )}
 
-        <header className="pudding-card !p-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-milky-brown/40">ADVENTURER STATUS</p>
-          <div className="mt-3 flex flex-wrap items-center gap-6 text-milky-brown">
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-milky-apricot flex items-center justify-center text-white">
-                <User className="h-4 w-4" />
-              </div>
-              <p className="text-lg font-black">{self.name}</p>
-            </div>
-            <div className="h-8 w-px bg-milky-brown/10 hidden sm:block" />
-            <div>
-              <p className="text-[10px] font-bold text-milky-brown/40">目前位置</p>
-              <p className="text-xl font-black">第 {self.position} 格</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-milky-brown/40">獲得星星</p>
-              <p className="text-xl font-black text-milky-accent">★ {self.stars}</p>
-            </div>
-            <div className="ml-auto bg-white/50 px-4 py-1 rounded-full border border-milky-beige/50">
-              <p className="text-xs font-bold text-milky-brown/60 uppercase">
-                 Round {game.current_round} / {game.round_count}
-              </p>
-            </div>
+        <header className="pudding-card !p-6 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 h-1.5 w-full bg-gradient-to-r from-milky-apricot via-milky-accent to-milky-brown opacity-60" />
+          <div className="flex flex-wrap items-center gap-10 text-milky-brown">
+            <div className="flex items-center gap-4"><div className="h-12 w-12 rounded-[1.2rem] bg-milky-brown text-white flex items-center justify-center shadow-xl group-hover:rotate-6 transition-transform"><User className="h-6 w-6" /></div><div><p className="text-[10px] font-black uppercase tracking-[0.3em] text-milky-brown/40 leading-none mb-1">Adventurer</p><p className="text-2xl font-black tracking-tighter">{self.name}</p></div></div>
+            <div className="flex gap-10"><div><p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">POS</p><p className="text-2xl font-black tracking-tighter">{self.position}</p></div><div><p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">STARS</p><p className="text-2xl font-black text-milky-accent tracking-tighter">★ {self.stars}</p></div></div>
+            <div className="ml-auto"><div className="bg-milky-beige/20 px-6 py-3 rounded-[1.5rem] border border-milky-beige/50 shadow-inner text-xs font-black text-milky-brown/50 uppercase tracking-[0.3em]">Round {game.current_round} / {game.round_count}</div></div>
           </div>
         </header>
+
         {game.phase === "finished" && (
-          <div className="rounded-2xl border border-milky-beige bg-milky-white/90 p-4 shadow-sm">
-            <p className="text-xs font-black uppercase tracking-widest text-milky-brown/40">冒險終點 · 前三名</p>
-            <ol className="mt-2 grid gap-2 sm:grid-cols-3">
+          <MotionWrapper type="bounce" className="rounded-[3.5rem] border-4 border-milky-apricot bg-milky-white/95 p-10 shadow-2xl text-center">
+            <h3 className="text-sm font-black uppercase tracking-[0.5em] text-milky-apricot mb-8">Legendary Adventurers</h3>
+            <ol className="grid gap-6 sm:grid-cols-3">
               {rankPlayers(players).slice(0, 3).map((p, idx) => (
-                <li key={p.id} className="rounded-xl border border-milky-beige/30 bg-white px-3 py-2 text-sm text-milky-brown">
-                  <span className="text-[10px] font-black text-milky-apricot mr-2 uppercase tracking-tighter">RANK {idx + 1}</span>
-                  <p className="font-black mt-1">{p.name}</p>
-                  <p className="text-[10px] font-bold text-milky-brown/40 uppercase">
-                    ★ {p.stars} · POS {p.position}
-                  </p>
+                <li key={p.id} className="rounded-[3rem] border-4 border-milky-beige/20 bg-white p-8 shadow-sm relative group overflow-hidden">
+                  <div className={`absolute top-0 inset-x-0 h-2 ${idx === 0 ? 'bg-milky-apricot' : idx === 1 ? 'bg-milky-accent' : 'bg-milky-brown/20'}`} />
+                  <span className="text-[10px] font-black text-milky-brown/20 uppercase tracking-widest block mb-4">RANK {idx + 1}</span>
+                  <p className="text-2xl font-black text-milky-brown truncate mb-2">{p.name}</p>
+                  <p className="text-xs font-black text-milky-accent">★ {p.stars} · {p.position} 格</p>
                 </li>
               ))}
             </ol>
-          </div>
+          </MotionWrapper>
         )}
-        <BoardGrid players={boardPlayers} selfId={self.id} />
-      </section>
-      <aside className="w-full max-w-sm space-y-4 pudding-card !bg-white/40 lg:sticky lg:top-6">
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-xl bg-milky-brown text-white flex items-center justify-center">
-             <Heart className="h-4 w-4" />
-          </div>
-          <h2 className="text-lg font-black text-milky-brown">我的卡片</h2>
-        </div>
-        
-        <div className="grid grid-cols-4 gap-2 rounded-2xl bg-white/60 p-3 shadow-inner">
-          <div className="text-center">
-            <p className="text-[10px] font-bold text-milky-brown/40">♠</p>
-            <p className="text-sm font-black">{suitCounts.S}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-[10px] font-bold text-milky-brown/40">♣</p>
-            <p className="text-sm font-black">{suitCounts.C}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-[10px] font-bold text-milky-accent">♦</p>
-            <p className="text-sm font-black text-milky-accent">{suitCounts.D}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-[10px] font-bold text-milky-accent">♥</p>
-            <p className="text-sm font-black text-milky-accent">{suitCounts.H}</p>
-          </div>
-        </div>
 
-        {availableCards.length === 0 ? (
-          <div className="py-10 text-center rounded-2xl border-2 border-dashed border-milky-brown/10">
-            <p className="text-xs font-bold text-milky-brown/30 uppercase tracking-widest">NO CARDS YET</p>
-          </div>
-        ) : (
-          <ul className="space-y-3 max-h-[50vh] overflow-y-auto pr-1 custom-scrollbar">
+        <BoardGrid players={players} selfId={self.id} />
+      </section>
+
+      <aside className="w-full max-w-sm space-y-6 pudding-card !bg-milky-white/50 lg:sticky lg:top-8 border-none shadow-none">
+        <div className="flex items-center gap-3"><div className="h-10 w-10 rounded-[1.2rem] bg-milky-brown text-white flex items-center justify-center shadow-lg"><Heart className="h-5 w-5" /></div><h2 className="text-xl font-black text-milky-brown tracking-tighter">我的卡池</h2></div>
+        <div className="grid grid-cols-4 gap-3 rounded-[2rem] bg-white p-5 shadow-sm border border-milky-beige/30 text-center">
+          <div><p className="text-[10px] font-black text-milky-brown/20 mb-1">♠</p><p className="text-lg font-black text-milky-brown">{suitCounts.S}</p></div>
+          <div><p className="text-[10px] font-black text-milky-brown/20 mb-1">♣</p><p className="text-lg font-black text-milky-brown">{suitCounts.C}</p></div>
+          <div><p className="text-[10px] font-black text-milky-accent/50 mb-1">♦</p><p className="text-lg font-black text-milky-accent">{suitCounts.D}</p></div>
+          <div><p className="text-[10px] font-black text-milky-accent/50 mb-1">♥</p><p className="text-lg font-black text-milky-accent">{suitCounts.H}</p></div>
+        </div>
+        {availableCards.length === 0 ? <div className="py-20 text-center rounded-[3rem] border-4 border-dashed border-milky-beige/30"><p className="text-xs font-black text-milky-brown/20 uppercase tracking-[0.3em]">No cards collected</p></div> : (
+          <ul className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
             {[...availableCards].reverse().map((c) => (
-              <MotionWrapper type="bounce" key={c.id} className="group relative overflow-hidden rounded-2xl border-2 border-milky-beige bg-white p-4 shadow-sm hover:border-milky-apricot/50 transition-all">
+              <MotionWrapper type="bounce" key={c.id} className="group relative overflow-hidden rounded-[2.5rem] border-2 border-milky-beige bg-white p-6 shadow-sm hover:border-milky-apricot transition-all">
                 <div className="flex justify-between items-center">
-                  <div>
-                    <p className="text-sm font-black text-milky-brown">{c.name}</p>
-                    <p className="text-[10px] font-bold text-milky-brown/30 uppercase">Round {c.round}</p>
-                  </div>
-                  <span className={`text-2xl ${c.suit === 'S' || c.suit === 'C' ? 'text-milky-brown' : 'text-milky-accent'}`}>
-                    {c.suit === 'S' ? '♠' : c.suit === 'C' ? '♣' : c.suit === 'D' ? '♦' : '♥'}
-                  </span>
+                  <div><p className="text-lg font-black text-milky-brown tracking-tight">{c.name}</p><p className="text-[10px] font-black text-milky-brown/20 uppercase tracking-widest">Round {c.round}</p></div>
+                  <span className={`text-3xl ${c.suit === 'S' || c.suit === 'C' ? 'text-milky-brown/20' : 'text-milky-accent/20'} transition-transform group-hover:scale-125`}>{c.suit === 'S' ? '♠' : c.suit === 'C' ? '♣' : c.suit === 'D' ? '♦' : '♥'}</span>
                 </div>
-                <div className="absolute inset-x-0 bottom-0 h-1 bg-milky-apricot opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="absolute inset-y-0 left-0 w-1.5 bg-milky-apricot opacity-0 group-hover:opacity-100 transition-opacity" />
               </MotionWrapper>
             ))}
           </ul>

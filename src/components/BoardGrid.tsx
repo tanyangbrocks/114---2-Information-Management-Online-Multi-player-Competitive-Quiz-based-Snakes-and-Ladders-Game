@@ -82,11 +82,12 @@ export function BoardGrid({ players, selfId }: Props) {
 
       {/* 玩家棋子層 */}
       <div className="absolute inset-0 pointer-events-none">
-        {players.map((p) => (
+        {players.map((p, idx) => (
           <PlayerToken
             key={p.id}
             player={p}
             isSelf={p.id === selfId}
+            index={idx}
           />
         ))}
       </div>
@@ -94,7 +95,7 @@ export function BoardGrid({ players, selfId }: Props) {
   );
 }
 
-function PlayerToken({ player, isSelf }: { player: PlayerRow; isSelf: boolean }) {
+function PlayerToken({ player, isSelf, index }: { player: PlayerRow; isSelf: boolean; index: number }) {
   const controls = useAnimation();
   const lastPosRef = useRef(player.position);
 
@@ -152,8 +153,8 @@ function PlayerToken({ player, isSelf }: { player: PlayerRow; isSelf: boolean })
       initial={{
         left: `${initialCoords.x}%`,
         top: `${initialCoords.y}%`,
-        x: "-50%",
-        y: "-50%"
+        x: `calc(-50% + ${((index % 3) - 1) * 8}px)`,
+        y: `calc(-50% + ${(Math.floor(index / 3) - 1) * 8}px)`
       }}
       className="absolute h-[10%] w-[10%] flex items-center justify-center"
       style={{ zIndex: isSelf ? 20 : 10 }}

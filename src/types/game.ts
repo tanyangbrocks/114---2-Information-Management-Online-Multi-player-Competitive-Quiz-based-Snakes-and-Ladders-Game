@@ -4,7 +4,7 @@ export type GamePhase = "lobby" | "question" | "reveal" | "skill" | "settle" | "
 
 export type Suit = "S" | "C" | "D" | "H";
 
-export type RoundConfig = { answer: QuizChoice };
+export type RoundConfig = { answer: QuizChoice; question_text?: string };
 
 export type GameCard = {
   id: string;
@@ -27,6 +27,7 @@ export type SkillAction = {
   action_type: SkillActionType;
   target_player_id?: string;
   consumed_cards: string[]; // 卡牌 ID 陣列
+  metadata?: any;
   created_at: string;
   status: "pending" | "resolved" | "cancelled" | "waiting_counter" | "ready";
 };
