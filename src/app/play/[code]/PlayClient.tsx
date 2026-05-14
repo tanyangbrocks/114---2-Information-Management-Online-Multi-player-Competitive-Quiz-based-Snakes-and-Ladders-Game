@@ -3,7 +3,6 @@
 import { BoardGrid } from "@/components/BoardGrid";
 import { useCardDraw } from "@/hooks/useCardDraw";
 import { useGameRealtime } from "@/hooks/useGameRealtime";
-import { rankPlayers } from "@/lib/game/ranking";
 import { createClient } from "@/lib/supabase/browser";
 import { usePlayerSessionStore } from "@/store/playerSessionStore";
 import { type QuizChoice, type GameCard } from "@/types/game";
@@ -208,6 +207,11 @@ export function PlayClient({ params }: Props) {
     }
   }, [predictedSteps, passiveModifier, self, supabase]);
 
+  const availableSkills = useMemo(() => {
+    if (!self || !game) return [];
+    return calculateAvailableSkills(self.cards || [], players.filter(p => p.id !== self.id), self.position);
+  }, [self, game, players]);
+
   // 當回合改變時重置技能狀態
   useEffect(() => {
     setSkillPreview(null);
@@ -382,8 +386,6 @@ export function PlayClient({ params }: Props) {
   const isWaitingSettle = game.phase === "settle" && movedRound !== game.current_round;
   const isCounterPhase = !!pendingCounter || !!snakeTarget;
   
-  const availableSkills = useMemo(() => calculateAvailableSkills(self?.cards || [], players.filter(p => p.id !== self.id), self.position), [self, players]);
-
   const handleCastSkill = async (skill: AvailableSkill) => {
     if (!game || !self) return;
     
