@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@supabase/supabase-js";
-import type { SkillActionType } from "@/types/game";
+import type { SkillActionType, GameCard } from "@/types/game";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!; // 伺服器端建議用 Service Role Key，但暫時用 Anon 搭配 RLS
@@ -36,7 +36,7 @@ export async function castSkill(
 
   if (playerErr || !player) throw new Error("找不到玩家");
 
-  const cards = player.cards as any[];
+  const cards = player.cards as GameCard[];
   const validCards = cards.filter((c) => !c.is_used);
   const validCardIds = validCards.map((c) => c.id);
 

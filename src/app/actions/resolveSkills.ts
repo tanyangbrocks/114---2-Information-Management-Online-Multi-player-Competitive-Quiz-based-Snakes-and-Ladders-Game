@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@supabase/supabase-js";
+import type { GameCard } from "@/types/game";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!; 
@@ -57,7 +58,7 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
 
     // S-1: 指定目標，隨機丟棄其一張未使用的手牌
     if (action.action_type === "S-1" && target) {
-      const tCards = target.cards as any[];
+      const tCards = target.cards as GameCard[];
       const available = tCards.filter(c => !c.is_used);
       if (available.length > 0) {
         // 隨機選一張

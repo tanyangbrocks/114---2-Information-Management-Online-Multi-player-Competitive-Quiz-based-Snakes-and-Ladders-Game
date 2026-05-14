@@ -6,10 +6,10 @@ import { useGameRealtime } from "@/hooks/useGameRealtime";
 import { rankPlayers } from "@/lib/game/ranking";
 import { createClient } from "@/lib/supabase/browser";
 import { usePlayerSessionStore } from "@/store/playerSessionStore";
-import { type QuizChoice, type GameCard, type SkillActionType } from "@/types/game";
+import { type QuizChoice } from "@/types/game";
 import { calculateAvailableSkills, countSuits, type AvailableSkill } from "@/lib/game/skillEngine";
 import { castSkill } from "@/app/actions/skills";
-import { Loader2, Sparkles, User, Radio, SkipForward, Swords, Target } from "lucide-react";
+import { Loader2, Sparkles, User, Radio, SkipForward } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, use } from "react";
 import { moveBySteps } from "@/lib/game/boardEngine";
 
@@ -294,24 +294,23 @@ export function PlayClient({ params }: Props) {
       // 簡單的自動選卡邏輯 (取最早拿到的牌)
       // 實務上可能需要玩家自己勾選，這裡先簡單根據消耗種類隨機抓
       // 假設 U-3 是消耗全部
-      let consumed: string[] = [];
+      let consumed: (string | undefined)[] = [];
       if (skill.actionType === "U-3") consumed = availableCards.map(c => c.id);
-      else if (skill.actionType === "S-1") consumed = [availableCards.find(c => c.suit === "S")?.id!];
+      else if (skill.actionType === "S-1") consumed = [availableCards.find(c => c.suit === "S")?.id];
       else if (skill.actionType === "S-2") consumed = availableCards.filter(c => c.suit === "S").slice(0, 2).map(c => c.id);
-      else if (skill.actionType === "C-1") consumed = [availableCards.find(c => c.suit === "C")?.id!];
+      else if (skill.actionType === "C-1") consumed = [availableCards.find(c => c.suit === "C")?.id];
       else if (skill.actionType === "C-2") consumed = availableCards.filter(c => c.suit === "C").slice(0, 2).map(c => c.id);
-      else if (skill.actionType === "H-1") consumed = [availableCards.find(c => c.suit === "H")?.id!];
+      else if (skill.actionType === "H-1") consumed = [availableCards.find(c => c.suit === "H")?.id];
       // U-1, U-2 消耗較複雜，需要一套選卡系統，這裡暫時隨便抓需要的張數 (3張/4張)
       else if (skill.actionType === "U-1") consumed = availableCards.slice(0, 3).map(c => c.id);
       else if (skill.actionType === "U-2") consumed = availableCards.slice(0, 4).map(c => c.id);
 
-      // 去除未定義的 (防呆)
-      consumed = consumed.filter(Boolean);
+      const finalConsumed = consumed.filter(Boolean) as string[];
 
-      await castSkill(game.id, game.current_round, self.id, skill.actionType, consumed, selectedTarget || undefined);
+      await castSkill(game.id, game.current_round, self.id, skill.actionType, finalConsumed, selectedTarget || undefined);
       setHasActedSkill(true);
-    } catch (e: any) {
-      alert(e.message);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : String(e));
     } finally {
       setSkillBusy(false);
     }

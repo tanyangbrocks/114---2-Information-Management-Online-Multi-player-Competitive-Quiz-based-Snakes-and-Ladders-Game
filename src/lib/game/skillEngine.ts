@@ -30,10 +30,10 @@ export function canAfford(
   costH: number,
   costD: number
 ): boolean {
-  let neededS = Math.max(0, costS - counts.S);
-  let neededC = Math.max(0, costC - counts.C);
-  let neededH = Math.max(0, costH - counts.H);
-  let neededD = Math.max(0, costD - counts.D);
+  const neededS = Math.max(0, costS - counts.S);
+  const neededC = Math.max(0, costC - counts.C);
+  const neededH = Math.max(0, costH - counts.H);
+  const neededD = Math.max(0, costD - counts.D);
 
   const totalCost = costS + costC + costH + costD;
   const missingSuits = neededS + neededC + neededH;
@@ -78,7 +78,7 @@ export function canAffordU2(counts: Record<Suit, number>): boolean {
   // 規則說「可用 2 菱形 + 2 不同花色配對」，意思是如果缺2種，要有至少2張菱形 (其中一張是原本需要的D，一張是替代品。等等，如果缺2種，加上本來的D，需要3張D？)
   // 其實簡化邏輯：我們需要 4 張牌。
   // 我們有的 S, C, H 各取最多 1 張，算作 uniqueSuits。
-  const uniqueSuits = (counts.S > 0 ? 1 : 0) + (counts.C > 0 ? 1 : 0) + (counts.H > 0 ? 1 : 0);
+  // 我們有的 S, C, H 各取最多 1 張。
   // 我們還缺 4 - uniqueSuits 張。這些全部用 D 來補。
   // 所以需要 D >= 4 - uniqueSuits。
   // 但規則說「每次轉化僅限 1 張」！！
