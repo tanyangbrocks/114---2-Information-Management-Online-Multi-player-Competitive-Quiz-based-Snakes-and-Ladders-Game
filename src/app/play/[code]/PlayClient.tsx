@@ -322,8 +322,8 @@ export function PlayClient({ params }: Props) {
     try {
       await castSkill(game.id, game.current_round, self.id, "PASS", []);
       setHasActedSkill(true);
-    } catch (e: any) {
-      alert(e.message);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : String(e));
     } finally {
       setSkillBusy(false);
     }
