@@ -18,26 +18,37 @@ export function HostGameClient({ params }: Props) {
   const searchParams = useSearchParams();
   const hostSecret = searchParams.get("hostSecret") ?? "";
 
-  const { game, players, status, error, reload, sendSignal, onMoveDone } = useGameRealtime(gameId);
+  const { game, players, status, error, reload, sendSignal } = useGameRealtime(gameId);
   const supabase = useMemo(() => createClient(), []);
   const [busy, setBusy] = useState<"send" | "next" | null>(null);
 
-  // 追蹤 settle 階段各玩家的移動確認狀態 (playerId -> newPosition)
-  const [movedPlayers, setMovedPlayers] = useState<Map<string, number>>(new Map());
+  // 在進入 settle 時快照各玩家的舊位置，用於後續比對是否已移動
+  const settleBaselineRef = useRef<Map<string, number>>(new Map());
 
-  // 當 phase 離開 settle 時清空狀態
   useEffect(() => {
-    if (game?.phase !== "settle") {
-      setMovedPlayers(new Map());
+    if (game?.phase === "settle") {
+      // 進入 settle 時，若快照為空則建立
+      if (settleBaselineRef.current.size === 0) {
+        const baseline = new Map<string, number>();
+        players.forEach((p) => baseline.set(p.id, p.position));
+        settleBaselineRef.current = baseline;
+      }
+    } else {
+      // 離開 settle 時清空快照
+      settleBaselineRef.current = new Map();
     }
-  }, [game?.phase]);
+  }, [game?.phase, players]);
 
-  // 訂閱玩家移動完成廣播
-  useEffect(() => {
-    onMoveDone(({ playerId, newPosition }) => {
-      setMovedPlayers((prev) => new Map(prev).set(playerId, newPosition));
-    });
-  }, [onMoveDone]);
+  // 判斷玩家是否已完成移動
+  const isPlayerMoved = (p: typeof players[number]) => {
+    if (!game || game.phase !== "settle") return false;
+    const card = p.cards.find((c) => c.round === game.current_round);
+    if (!card) return false;
+    if (card.points === 0) return true; // 移動0格，位置不變但已結算
+    const baseline = settleBaselineRef.current.get(p.id);
+    return baseline !== undefined && p.position !== baseline;
+  };
+
 
   const authorized = game && hostSecret && game.host_secret === hostSecret;
   const inviteUrl =
