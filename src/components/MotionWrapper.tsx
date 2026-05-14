@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, HTMLMotionProps } from "framer-motion";
+import { motion, HTMLMotionProps, Variants } from "framer-motion";
 import { ReactNode } from "react";
 
 interface MotionWrapperProps extends HTMLMotionProps<"div"> {
@@ -16,7 +16,7 @@ export function MotionWrapper({
   className,
   ...props 
 }: MotionWrapperProps) {
-  const variants = {
+  const variants: Record<string, Variants> = {
     bounce: {
       initial: { scale: 0.9, opacity: 0 },
       animate: { 
