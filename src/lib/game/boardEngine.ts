@@ -6,14 +6,16 @@ export const ESCALATORS: ReadonlyArray<readonly [number, number]> = [
   [3, 22],
   [36, 55],
   [67, 88],
-  [7, 34]
+  [7, 34],
+  [81, 99]
 ];
 
 export const EELS: ReadonlyArray<readonly [number, number]> = [
   [26, 5],
   [58, 39],
   [93, 72],
-  [48, 17]
+  [48, 17],
+  [98, 83]
 ];
 
 const jumps = new Map<number, number>();

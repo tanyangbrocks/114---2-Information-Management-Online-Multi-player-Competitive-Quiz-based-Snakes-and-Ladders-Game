@@ -1,6 +1,6 @@
 export type QuizChoice = "A" | "B" | "C" | "D";
 
-export type GamePhase = "lobby" | "question" | "between_rounds" | "finished";
+export type GamePhase = "lobby" | "question" | "reveal" | "settle" | "between_rounds" | "finished";
 
 export type RoundConfig = { answer: QuizChoice };
 

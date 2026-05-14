@@ -68,6 +68,36 @@ export function HostGameClient({ params }: Props) {
     }
   };
 
+  const revealAnswer = async () => {
+    if (!game) return;
+    setBusy("send");
+    try {
+      const { error: upErr } = await supabase.from("games").update({ phase: "reveal" }).eq("id", game.id);
+      if (upErr) throw upErr;
+      await reload();
+      await sendSignal();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "公布失敗");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const settleMoves = async () => {
+    if (!game) return;
+    setBusy("next");
+    try {
+      const { error: upErr } = await supabase.from("games").update({ phase: "settle" }).eq("id", game.id);
+      if (upErr) throw upErr;
+      await reload();
+      await sendSignal();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "結算失敗");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const advanceRound = async () => {
     if (!game) return;
     setBusy("next");
@@ -142,22 +172,46 @@ export function HostGameClient({ params }: Props) {
           </div>
         ) : (
           <div className="flex flex-wrap items-center justify-center gap-4">
-            <button
-              onClick={sendQuestion}
-              disabled={busy !== null || game.phase === "finished"}
-              className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-sky-200 transition-all hover:bg-sky-700 active:scale-95 disabled:opacity-50"
-            >
-              {busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radio className="h-4 w-4" />}
-              發送答題指令
-            </button>
-            <button
-              onClick={advanceRound}
-              disabled={busy !== null || game.phase === "finished"}
-              className="inline-flex items-center gap-2 rounded-xl border-2 border-sky-600 px-6 py-3 text-sm font-bold text-sky-600 transition-all hover:bg-sky-50 active:scale-95 disabled:opacity-50"
-            >
-              {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />}
-              進入下一階段
-            </button>
+            {game.phase === "between_rounds" && (
+              <button
+                onClick={sendQuestion}
+                disabled={busy !== null}
+                className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-sky-200 transition-all hover:bg-sky-700 active:scale-95"
+              >
+                {busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radio className="h-4 w-4" />}
+                發送答題指令
+              </button>
+            )}
+            {game.phase === "question" && (
+              <button
+                onClick={revealAnswer}
+                disabled={busy !== null}
+                className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-amber-200 transition-all hover:bg-amber-700 active:scale-95"
+              >
+                {busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                公布答案
+              </button>
+            )}
+            {game.phase === "reveal" && (
+              <button
+                onClick={settleMoves}
+                disabled={busy !== null}
+                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700 active:scale-95"
+              >
+                {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />}
+                結算移動
+              </button>
+            )}
+            {game.phase === "settle" && (
+              <button
+                onClick={advanceRound}
+                disabled={busy !== null}
+                className="inline-flex items-center gap-2 rounded-xl border-2 border-sky-600 px-6 py-3 text-sm font-bold text-sky-600 transition-all hover:bg-sky-50 active:scale-95"
+              >
+                {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />}
+                進入下一階段
+              </button>
+            )}
           </div>
         )}
       </header>

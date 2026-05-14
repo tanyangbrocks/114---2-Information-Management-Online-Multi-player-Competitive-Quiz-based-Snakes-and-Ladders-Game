@@ -1,7 +1,7 @@
 import type { GameCard, GameRow, GamePhase, PlayerRow, QuizChoice, RoundConfig } from "@/types/game";
 
 function coercePhase(p: unknown): GamePhase {
-  if (p === "lobby" || p === "question" || p === "between_rounds" || p === "finished") return p;
+  if (p === "lobby" || p === "question" || p === "reveal" || p === "settle" || p === "between_rounds" || p === "finished") return p;
   return "lobby";
 }
 

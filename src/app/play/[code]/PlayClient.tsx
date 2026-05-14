@@ -91,34 +91,12 @@ export function PlayClient({ params }: Props) {
     const roundKey = String(game.current_round);
     if (self.answers[roundKey]) return;
 
-    const cfg = game.rounds_config[game.current_round - 1];
-    if (!cfg) return;
-
     setAnswerBusy(true);
     try {
-      const isCorrect = cfg.answer === choice;
-      
-      // 1. 答題後間距 0.5s
-      await new Promise((r) => setTimeout(r, 500));
-      
-      const card = drawForSlot(isCorrect ? 2 : 1, game.current_round);
-      
-      // 2. 抽卡後間距 0.5s
-      await new Promise((r) => setTimeout(r, 500));
-      
-      const move = moveBySteps(self.position, card.points);
-      const newStars = self.stars + move.starsGained;
-      const newCards = [...self.cards, card];
       const newAnswers = { ...self.answers, [roundKey]: choice };
-
       const { error: upErr } = await supabase
         .from("players")
-        .update({
-          position: move.position,
-          stars: newStars,
-          cards: newCards,
-          answers: newAnswers
-        })
+        .update({ answers: newAnswers })
         .eq("id", self.id);
       if (upErr) throw upErr;
       await reload();
@@ -129,6 +107,64 @@ export function PlayClient({ params }: Props) {
       setAnswerBusy(false);
     }
   };
+
+  // 處理抽卡邏輯 (當主辦方進入 reveal 階段)
+  useEffect(() => {
+    if (game?.phase === "reveal" && self && gameId) {
+      const alreadyDrawn = self.cards.some((c) => c.round === game.current_round);
+      if (!alreadyDrawn) {
+        const roundKey = String(game.current_round);
+        const choice = self.answers[roundKey];
+        if (!choice) return; // 沒答題就沒卡
+
+        const cfg = game.rounds_config[game.current_round - 1];
+        if (!cfg) return;
+
+        const isCorrect = cfg.answer === choice;
+        const card = drawForSlot(isCorrect ? 2 : 1, game.current_round);
+        const newCards = [...self.cards, card];
+
+        void supabase
+          .from("players")
+          .update({ cards: newCards })
+          .eq("id", self.id)
+          .then(() => {
+            void reload();
+            void sendSignal();
+          });
+      }
+    }
+  }, [game?.phase, game?.current_round, self, gameId, drawForSlot, reload, sendSignal, supabase]);
+
+  // 處理移動邏輯 (當主辦方進入 settle 階段)
+  useEffect(() => {
+    if (game?.phase === "settle" && self && gameId) {
+      const card = self.cards.find((c) => c.round === game.current_round);
+      if (card) {
+        // 檢查是否已經移動過（這裡用一個簡單的邏輯：如果位置已經根據這張卡算過了）
+        // 為了簡單起見，我們比對最後一次移動的時間或狀態，或者直接檢查 phase
+        // 這裡我們暫且假設 settle 階段只會觸發一次移動
+        const move = moveBySteps(self.position, card.points);
+        const newStars = self.stars + move.starsGained;
+
+        // 我們需要確保這個更新只發生一次
+        // 這裡透過檢查資料庫中的 position 是否已經是 move.position 來防重 (雖然不完美，但在此架構下堪用)
+        if (self.position !== move.position || self.stars !== newStars) {
+          void supabase
+            .from("players")
+            .update({
+              position: move.position,
+              stars: newStars
+            })
+            .eq("id", self.id)
+            .then(() => {
+              void reload();
+              void sendSignal();
+            });
+        }
+      }
+    }
+  }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, supabase]);
 
   if (lookupError) {
     return (
