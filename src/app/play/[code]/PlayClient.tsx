@@ -3,10 +3,11 @@
 import { BoardGrid } from "@/components/BoardGrid";
 import { useCardDraw } from "@/hooks/useCardDraw";
 import { useGameRealtime } from "@/hooks/useGameRealtime";
+import { rankPlayers } from "@/lib/game/ranking";
 import { createClient } from "@/lib/supabase/browser";
 import { usePlayerSessionStore } from "@/store/playerSessionStore";
 import { type QuizChoice, type GameCard } from "@/types/game";
-import { calculateAvailableSkills, countSuits, type AvailableSkill } from "@/lib/game/skillEngine";
+import { calculateAvailableSkills, countSuits, getAvailableCards, type AvailableSkill } from "@/lib/game/skillEngine";
 import { MotionWrapper } from "@/components/MotionWrapper";
 import { Loader2, Sparkles, User, Radio, SkipForward, Heart } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, use, useCallback } from "react";
@@ -240,15 +241,23 @@ export function PlayClient({ params }: Props) {
   const performMove = useCallback(async (pos: number, stars: number, heartToConsume?: string) => {
     if (!self || !game) return;
     try {
-      if (heartToConsume) {
-        const newCards = self.cards.map(c => c.id === heartToConsume ? { ...c, is_used: true } : c);
-        await supabase.from("players").update({ cards: newCards }).eq("id", self.id);
-      }
+      // 標記該回合使用的移動卡為已使用，若有 U-3 額外消耗也處理
+      const updatedCards = self.cards.map(c => {
+        if (c.round === game.current_round || c.id === heartToConsume) {
+          return { ...c, is_used: true };
+        }
+        return c;
+      });
       
       const { error: upErr } = await supabase
         .from("players")
-        .update({ position: pos, stars: self.stars + stars })
+        .update({ 
+          position: pos, 
+          stars: self.stars + stars,
+          cards: updatedCards
+        })
         .eq("id", self.id);
+
       if (upErr) throw upErr;
       await reload();
       setMovedRound(game.current_round);
@@ -309,7 +318,7 @@ export function PlayClient({ params }: Props) {
   if (lookupError) {
     return (
       <main className="mx-auto max-w-lg px-4 py-12">
-        <p className="text-rose-600">{lookupError}</p>
+        <p className="text-milky-brown font-bold opacity-60">{lookupError}</p>
       </main>
     );
   }
@@ -325,7 +334,7 @@ export function PlayClient({ params }: Props) {
   if (error || !game) {
     return (
       <main className="mx-auto max-w-lg px-4 py-12">
-        <p className="text-rose-600">{error ?? "無法載入場次"}</p>
+        <p className="text-milky-brown font-bold opacity-60">{error ?? "無法載入場次"}</p>
       </main>
     );
   }
@@ -354,7 +363,7 @@ export function PlayClient({ params }: Props) {
                 placeholder="輸入您的名字..."
               />
             </label>
-            {joinError && <p className="text-sm font-medium text-rose-500 ml-1">＊{joinError}</p>}
+            {joinError && <p className="text-sm font-bold text-milky-brown/60 ml-1">＊{joinError}</p>}
             <button
               type="submit"
               disabled={joinBusy}
@@ -488,7 +497,7 @@ export function PlayClient({ params }: Props) {
         {answerFeedback && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none">
             <MotionWrapper type="bounce" className="flex items-center justify-center">
-              <div className={`flex h-40 w-40 items-center justify-center rounded-full border-8 bg-white/90 backdrop-blur-md shadow-2xl ${answerFeedback === 'O' ? 'border-milky-apricot text-milky-apricot' : 'border-rose-300 text-rose-300'}`}>
+              <div className={`flex h-40 w-40 items-center justify-center rounded-full border-8 bg-white/90 backdrop-blur-md shadow-2xl ${answerFeedback === 'O' ? 'border-milky-apricot text-milky-apricot' : 'border-milky-brown/40 text-milky-brown/40'}`}>
                  <span className="text-8xl font-black">{answerFeedback}</span>
               </div>
             </MotionWrapper>
@@ -503,18 +512,18 @@ export function PlayClient({ params }: Props) {
               {isCounterPhase && (
                 <div className="space-y-6">
                   <div className="text-center">
-                    <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-rose-100 text-rose-500 shadow-inner">
+                    <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-milky-apricot/20 text-milky-brown shadow-inner">
                       <Sparkles className="h-10 w-10 animate-pulse" />
                     </div>
                     {pendingCounter && (
                       <>
                         <h2 className="text-2xl font-black text-milky-brown">反制攔截！</h2>
-                        <p className="mt-2 text-milky-brown/70">對手對你發動了 <span className="font-bold text-rose-500">{pendingCounter.action_type}</span></p>
+                        <p className="mt-2 text-milky-brown/70">對手對你發動了 <span className="font-bold text-milky-accent">{pendingCounter.action_type}</span></p>
                         <p className="mt-4 font-bold text-milky-brown bg-milky-apricot/20 py-2 rounded-xl">是否消耗 2 張菱形抵銷？</p>
                         <div className="mt-8 flex gap-4">
                           <button
                             onClick={() => respondToSkillCounter(pendingCounter.id, true)}
-                            className="pudding-button-primary flex-1 bg-rose-400 text-white hover:bg-rose-500"
+                            className="pudding-button-primary flex-1 bg-milky-accent text-white hover:opacity-90"
                           >
                             是
                           </button>
@@ -794,15 +803,15 @@ export function PlayClient({ params }: Props) {
           </div>
         </header>
         {game.phase === "finished" && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">前三名</p>
+          <div className="rounded-2xl border border-milky-beige bg-milky-white/90 p-4 shadow-sm">
+            <p className="text-xs font-black uppercase tracking-widest text-milky-brown/40">冒險終點 · 前三名</p>
             <ol className="mt-2 grid gap-2 sm:grid-cols-3">
-              {podium.map((p, idx) => (
-                <li key={p.id} className="rounded-xl border border-amber-100 bg-white px-3 py-2 text-sm text-slate-900">
-                  <span className="text-xs text-amber-800">第 {idx + 1} 名</span>
-                  <p className="font-semibold">{p.name}</p>
-                  <p className="text-xs text-slate-600">
-                    星星 {p.stars} · 位置 {p.position}
+              {rankPlayers(players).slice(0, 3).map((p, idx) => (
+                <li key={p.id} className="rounded-xl border border-milky-beige/30 bg-white px-3 py-2 text-sm text-milky-brown">
+                  <span className="text-[10px] font-black text-milky-apricot mr-2 uppercase tracking-tighter">RANK {idx + 1}</span>
+                  <p className="font-black mt-1">{p.name}</p>
+                  <p className="text-[10px] font-bold text-milky-brown/40 uppercase">
+                    ★ {p.stars} · POS {p.position}
                   </p>
                 </li>
               ))}
@@ -829,12 +838,12 @@ export function PlayClient({ params }: Props) {
             <p className="text-sm font-black">{suitCounts.C}</p>
           </div>
           <div className="text-center">
-            <p className="text-[10px] font-bold text-rose-400">♦</p>
-            <p className="text-sm font-black text-rose-500">{suitCounts.D}</p>
+            <p className="text-[10px] font-bold text-milky-accent">♦</p>
+            <p className="text-sm font-black text-milky-accent">{suitCounts.D}</p>
           </div>
           <div className="text-center">
-            <p className="text-[10px] font-bold text-rose-400">♥</p>
-            <p className="text-sm font-black text-rose-500">{suitCounts.H}</p>
+            <p className="text-[10px] font-bold text-milky-accent">♥</p>
+            <p className="text-sm font-black text-milky-accent">{suitCounts.H}</p>
           </div>
         </div>
 
@@ -851,7 +860,7 @@ export function PlayClient({ params }: Props) {
                     <p className="text-sm font-black text-milky-brown">{c.name}</p>
                     <p className="text-[10px] font-bold text-milky-brown/30 uppercase">Round {c.round}</p>
                   </div>
-                  <span className={`text-2xl ${c.suit === 'S' || c.suit === 'C' ? 'text-milky-brown' : 'text-rose-400'}`}>
+                  <span className={`text-2xl ${c.suit === 'S' || c.suit === 'C' ? 'text-milky-brown' : 'text-milky-accent'}`}>
                     {c.suit === 'S' ? '♠' : c.suit === 'C' ? '♣' : c.suit === 'D' ? '♦' : '♥'}
                   </span>
                 </div>

@@ -182,8 +182,8 @@ export function HostGameClient({ params }: Props) {
   if (error || !game) {
     return (
       <main className="mx-auto max-w-3xl px-4 py-10">
-        <div className="pudding-card bg-rose-50 border-rose-100">
-           <p className="text-rose-600 font-bold">{error ?? "找不到場次"}</p>
+        <div className="pudding-card bg-milky-white border-milky-beige">
+           <p className="text-milky-brown font-bold opacity-60">{error ?? "找不到場次"}</p>
         </div>
       </main>
     );
@@ -287,12 +287,12 @@ export function HostGameClient({ params }: Props) {
 
       {/* settle 階段：顯示各玩家移動確認狀態 */}
       {game.phase === "settle" && (
-        <section className="mt-8 pudding-card !bg-indigo-50/40 border-indigo-100">
+        <section className="mt-8 pudding-card !bg-milky-white/40 border-milky-beige">
           <div className="flex items-center gap-2 mb-4">
-             <div className="bg-indigo-500 text-white p-1 rounded-lg">
+             <div className="bg-milky-brown text-white p-1 rounded-lg">
                 <SkipForward className="h-4 w-4" />
              </div>
-             <h2 className="text-lg font-black text-indigo-900">玩家移動進度</h2>
+             <h2 className="text-lg font-black text-milky-brown">玩家移動進度</h2>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {players.map((p) => {

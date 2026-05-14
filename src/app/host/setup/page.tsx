@@ -5,7 +5,8 @@ import { generateInviteCode } from "@/lib/game/inviteCode";
 import type { QuizChoice, RoundConfig } from "@/types/game";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, LayoutDashboard } from "lucide-react";
+import { MotionWrapper } from "@/components/MotionWrapper";
 
 const OPTIONS: QuizChoice[] = ["A", "B", "C", "D"];
 
@@ -67,62 +68,77 @@ export default function HostSetupPage() {
   };
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10">
-      <div className="mb-8 space-y-2">
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-sky-700">Host</p>
-        <h1 className="text-3xl font-semibold text-slate-900">建立新場次</h1>
-        <p className="text-slate-600">設定回合數 N，並為每一回合指定正確答案（A–D）。建立後會導向主辦後臺。</p>
-      </div>
-      <form onSubmit={onSubmit} className="space-y-6 rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
-        <label className="block space-y-2">
-          <span className="text-sm font-medium text-slate-800">回合數 N（1–20）</span>
-          <input
-            type="number"
-            min={1}
-            max={20}
-            value={rounds}
-            onChange={(e) => handleRoundsChange(Number(e.target.value))}
-            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-lg font-semibold text-slate-900 outline-none ring-sky-200 focus:ring-2"
-          />
-        </label>
-        <div className="space-y-3">
-          <p className="text-sm font-medium text-slate-800">每回合正確答案</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {Array.from({ length: rounds }, (_, idx) => (
-              <label key={idx} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                <span className="text-sm text-slate-600">回合 {idx + 1}</span>
-                <select
-                  value={answers[idx] ?? "A"}
-                  onChange={(e) => {
-                    const v = e.target.value as QuizChoice;
-                    setAnswers((prev) => {
-                      const next = [...prev];
-                      next[idx] = v;
-                      return next;
-                    });
-                  }}
-                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm font-semibold text-slate-900"
-                >
-                  {OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
-          </div>
+    <main className="mx-auto max-w-3xl px-4 py-12 page-fade-in">
+      <div className="mb-10 text-center">
+        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-milky-brown text-white shadow-lg">
+           <LayoutDashboard className="h-6 w-6" />
         </div>
-        {error && <p className="text-sm text-rose-600">{error}</p>}
-        <button
-          type="submit"
-          disabled={busy}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 disabled:cursor-not-allowed"
-        >
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          建立場次並前往後臺
-        </button>
-      </form>
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-milky-brown/40">GAME SETUP</p>
+        <h1 className="text-4xl font-black text-milky-brown">建立新冒險</h1>
+        <p className="mt-2 text-sm font-bold text-milky-brown/40 max-w-md mx-auto text-balance">
+          設定回合總數與正確答案。冒險者將根據答題結果獲得對應的移動步數。
+        </p>
+      </div>
+
+      <MotionWrapper type="bounce">
+        <form onSubmit={onSubmit} className="pudding-card border-2 space-y-8 p-8 shadow-xl">
+          <label className="block space-y-3">
+            <span className="text-sm font-black text-milky-brown/80 ml-1">冒險回合總數 (1–20)</span>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={rounds}
+              onChange={(e) => handleRoundsChange(Number(e.target.value))}
+              className="w-full rounded-2xl border-2 border-milky-beige bg-white/50 px-5 py-4 text-2xl font-black text-milky-brown outline-none ring-milky-apricot/50 focus:border-milky-apricot focus:ring-4 transition-all"
+            />
+          </label>
+
+          <div className="space-y-4">
+            <span className="text-sm font-black text-milky-brown/80 ml-1">每一回合的正確解答</span>
+            <div className="grid gap-3 sm:grid-cols-2 max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar p-1">
+              {Array.from({ length: rounds }, (_, idx) => (
+                <div key={idx} className="flex items-center justify-between gap-3 rounded-2xl border-2 border-milky-beige bg-milky-white/60 px-4 py-3 group hover:border-milky-apricot/30 transition-colors">
+                  <span className="text-xs font-black text-milky-brown/40 uppercase tracking-tighter">Round {idx + 1}</span>
+                  <select
+                    value={answers[idx] ?? "A"}
+                    onChange={(e) => {
+                      const v = e.target.value as QuizChoice;
+                      setAnswers((prev) => {
+                        const next = [...prev];
+                        next[idx] = v;
+                        return next;
+                      });
+                    }}
+                    className="rounded-xl border-2 border-milky-beige bg-white px-3 py-1.5 text-sm font-black text-milky-brown outline-none focus:border-milky-apricot"
+                  >
+                    {OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        選項 {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {error && <p className="text-sm font-bold text-milky-accent text-center">＊{error}</p>}
+          
+          <button
+            type="submit"
+            disabled={busy}
+            className="pudding-button-primary w-full py-5 text-xl shadow-milky-apricot/30"
+          >
+            {busy ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : (
+              <span className="flex items-center justify-center gap-2">
+                 <Sparkles className="h-6 w-6" />
+                 開啟冒險大門
+              </span>
+            )}
+          </button>
+        </form>
+      </MotionWrapper>
     </main>
   );
 }
