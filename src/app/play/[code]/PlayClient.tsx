@@ -134,7 +134,7 @@ export function PlayClient({ params }: Props) {
           });
       }
     }
-  }, [game?.phase, game?.current_round, self, gameId, drawForSlot, reload, sendSignal, supabase]);
+  }, [game?.phase, game?.current_round, game?.rounds_config, self, gameId, drawForSlot, reload, sendSignal, supabase]);
 
   // 處理移動邏輯 (當主辦方進入 settle 階段)
   useEffect(() => {

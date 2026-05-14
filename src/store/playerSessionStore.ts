@@ -19,7 +19,8 @@ export const usePlayerSessionStore = create<State>()(
       getPlayerId: (gameId) => get().playerByGame[gameId],
       clearPlayerId: (gameId) =>
         set((s) => {
-          const { [gameId]: _removed, ...rest } = s.playerByGame;
+          const rest = { ...s.playerByGame };
+          delete rest[gameId];
           return { playerByGame: rest };
         })
     }),

@@ -3,7 +3,7 @@
 import { useSnakeLadderBoard } from "@/hooks/useSnakeLadderBoard";
 import type { PlayerRow } from "@/types/game";
 import { cn } from "@/lib/cn";
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { ESCALATORS, EELS } from "@/lib/game/boardEngine";
 import { motion, useAnimation } from "framer-motion";
 
@@ -158,7 +158,8 @@ function PlayerToken({ player, color, isSelf }: { player: PlayerRow; color: stri
     void animateMovement();
   }, [player.position, controls]);
 
-  const initialCoords = useMemo(() => getCellCoords(player.position), []);
+  const initialPos = useRef(player.position);
+  const initialCoords = useMemo(() => getCellCoords(initialPos.current), []);
 
   return (
     <motion.div

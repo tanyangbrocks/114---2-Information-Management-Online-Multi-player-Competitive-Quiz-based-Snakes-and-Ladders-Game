@@ -7,7 +7,7 @@ import { rankPlayers } from "@/lib/game/ranking";
 import { useGameRealtime } from "@/hooks/useGameRealtime";
 import { useMemo, useState, use } from "react";
 import { useSearchParams } from "next/navigation";
-import { Loader2, Radio, SkipForward, Trophy } from "lucide-react";
+import { Loader2, Radio, SkipForward, Trophy, Sparkles } from "lucide-react";
 
 type Props = {
   params: Promise<{ gameId: string }>;
