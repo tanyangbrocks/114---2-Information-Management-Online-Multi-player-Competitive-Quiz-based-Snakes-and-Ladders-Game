@@ -129,24 +129,27 @@ export function PlayClient({ params }: Props) {
   };
 
   const lastDrawnRoundRef = useRef<number | null>(null);
+  // 每回合只顯示一次 O/X，用 ref 鎖住防止因 self 更新而重復觸發
+  const lastFeedbackRoundRef = useRef<number>(-1);
 
   useEffect(() => {
     if (game?.phase !== "reveal" || !self || !gameId) return;
+    // 首要检查：此回合已經顯示過，不再重複
+    if (lastFeedbackRoundRef.current === game.current_round) return;
 
     const roundKey = String(game.current_round);
     const choice = self.answers[roundKey];
-    const cfg = game.rounds_config?.[game.current_round - 1];
-    const isCorrect = cfg ? (choice === cfg.answer) : (!!choice);
+    if (!choice) return; // 未作答，不顯示
 
-    // ── 無論是否已抽牌，都先呈現 O/X 反饋（並在 1.5 秒後自動清除）
-    if (choice) {
-      setAnswerFeedback(isCorrect ? "O" : "X");
-      const timer = setTimeout(() => setAnswerFeedback(null), 1500);
-      // 在 effect cleanup 時清除計時器，防止組件卸載後 setState
-      // （cleanup 在下次 effect 觸發或組件卸載時執行）
-      return () => clearTimeout(timer);
-    }
-  }, [game?.phase, game?.current_round, self?.answers, game?.rounds_config, gameId]);
+    const cfg = game.rounds_config?.[game.current_round - 1];
+    const isCorrect = cfg ? (choice === cfg.answer) : true;
+
+    // 鎖定：此回合已处理，不再重復
+    lastFeedbackRoundRef.current = game.current_round;
+    setAnswerFeedback(isCorrect ? "O" : "X");
+    const timer = setTimeout(() => setAnswerFeedback(null), 1500);
+    return () => clearTimeout(timer);
+  }, [game?.phase, game?.current_round, self, game?.rounds_config, gameId]);
 
   // 抽牌邏輯獨立成另一個 effect，避免與 feedback effect 互相干擾
   useEffect(() => {
@@ -289,6 +292,8 @@ export function PlayClient({ params }: Props) {
     setPendingCounter(null);
     setSnakeTarget(null);
     setHasActedSkillState(false);
+    // 回合變更時，重置 feedback ref 以允許下一回合再次顯示
+    lastFeedbackRoundRef.current = -1;
   }, [game?.current_round]);
 
   useEffect(() => {
@@ -554,7 +559,7 @@ export function PlayClient({ params }: Props) {
               </div>
             </div>
 
-            {currentRoundCard && (
+            {currentRoundCard ? (
               <div className="pudding-card !bg-milky-accent/10 border-milky-accent/20 flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="h-12 w-12 rounded-2xl bg-milky-accent text-white flex items-center justify-center shadow-lg"><Sparkles className="h-6 w-6" /></div>
@@ -565,6 +570,17 @@ export function PlayClient({ params }: Props) {
                 </div>
                 <div className="text-right">
                   <p className="text-3xl font-black text-milky-accent">+{currentRoundCard.points} 步</p>
+                </div>
+              </div>
+            ) : (
+              // 卡牌抽取中（非同步），顯示等待骨架
+              <div className="pudding-card !bg-milky-beige/30 border-milky-beige/50 flex items-center gap-4 animate-pulse">
+                <div className="h-12 w-12 rounded-2xl bg-milky-beige text-milky-brown/40 flex items-center justify-center shadow-sm">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-milky-brown/30 uppercase tracking-widest mb-1">Obtaining Card</p>
+                  <p className="text-sm font-bold text-milky-brown/40">卡牌抽取中...</p>
                 </div>
               </div>
             )}
