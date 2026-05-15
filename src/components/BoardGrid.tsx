@@ -193,8 +193,8 @@ function PlayerToken({
           p = next;
           count++;
           // 只有當「這格機關的終點」剛好就是我們的「最終目的地」時，才在這裡中斷走步並轉入傳送
-          const { endPos } = applyConnectors(p);
-          if (endPos === to && p !== to) break;
+          const { position } = applyConnectors(p);
+          if (position === to && p !== to) break;
         }
       }
 
