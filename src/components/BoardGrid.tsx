@@ -128,13 +128,16 @@ function PlayerToken({
     }
   }, [phase, player.position, controls]);
 
+  const isMovingRef = useRef(false);
+
   useEffect(() => {
-    // 當進入 settle 或 skill 階段，且位置與上次紀錄不同，則啟動動畫
-    if ((phase === "settle" || phase === "skill") && player.position !== lastPosRef.current) {
+    // 當進入 settle 或 skill 階段，且位置與上次紀錄不同，且當前不在動畫中
+    if ((phase === "settle" || phase === "skill") && player.position !== lastPosRef.current && !isMovingRef.current) {
       void animateMovement();
     }
 
     async function animateMovement() {
+      isMovingRef.current = true;
       const from = lastPosRef.current;
       const to = player.position;
       
@@ -188,8 +191,9 @@ function PlayerToken({
       }
 
       lastPosRef.current = to;
+      isMovingRef.current = false;
     }
-  }, [player.position, phase, controls, player.predicted_steps]);
+  }, [player.position, phase, controls]);
 
   // 初始渲染位置
   // 初始渲染位置：在結算階段鎖定在移動前的位置，避免因資料更新導致瞬移

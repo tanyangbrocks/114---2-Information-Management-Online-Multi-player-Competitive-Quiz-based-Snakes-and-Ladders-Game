@@ -177,14 +177,10 @@ export function PlayClient({ params }: Props) {
     };
   }, [self, game]);
 
+  // 移除資料庫寫入邏輯，改為純前端顯示
   useEffect(() => {
-    if (self && (self.predicted_steps !== predictedSteps || self.passive_modifiers !== passiveModifier)) {
-      void supabase.from("players").update({ 
-        predicted_steps: predictedSteps, 
-        passive_modifiers: passiveModifier 
-      }).eq("id", self.id);
-    }
-  }, [predictedSteps, passiveModifier, self, supabase]);
+    // 這裡不再呼叫 supabase.update，因為欄位不存在
+  }, [predictedSteps, passiveModifier]);
 
 
   const availableSkills = useMemo(() => {
@@ -600,7 +596,7 @@ export function PlayClient({ params }: Props) {
                <p className="text-white/60 font-bold">請點擊下方清單或棋盤上的玩家頭像</p>
              </div>
              <div className="w-full max-w-md grid grid-cols-2 gap-4 mb-8">
-               {players.filter(p => p.id !== self.id).map(p => (
+               {[...players].sort((a, b) => a.id.localeCompare(b.id)).map(p => (
                  <button 
                    key={p.id} 
                    onClick={() => {
@@ -657,8 +653,8 @@ export function PlayClient({ params }: Props) {
               <div><p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">星星</p><p className="text-2xl font-black text-milky-accent tracking-tighter">★ {self.stars}</p></div>
               <div className="flex flex-col items-end">
                 <p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">步數加乘</p>
-                <p className={`text-2xl font-black tracking-tighter ${self.passive_modifiers >= 0 ? 'text-milky-brown' : 'text-milky-brown/60'}`}>
-                  {self.passive_modifiers > 0 ? `+${self.passive_modifiers}` : self.passive_modifiers}
+                <p className={`text-2xl font-black tracking-tighter ${passiveModifier >= 0 ? 'text-milky-brown' : 'text-milky-brown/60'}`}>
+                  {passiveModifier > 0 ? `+${passiveModifier}` : passiveModifier}
                 </p>
               </div>
             </div>

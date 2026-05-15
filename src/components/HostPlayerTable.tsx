@@ -39,48 +39,57 @@ export function HostPlayerTable({ game, players }: Props) {
             </tr>
           </thead>
           <tbody>
-            {players.map((p) => (
-              <tr key={p.id} className="border-t border-milky-beige/20 hover:bg-milky-apricot/5 transition-colors">
-                <td className="px-6 py-4 font-black text-milky-brown">{p.name}</td>
-                {rounds.map((r) => {
-                  const ans = p.answers[String(r)] as QuizChoice | undefined;
-                  return (
-                    <td key={r} className="px-2 py-4 font-mono text-xs font-bold text-milky-brown/60">
-                      {ans ?? "—"}
-                    </td>
-                  );
-                })}
-                <td className="px-6 py-4 text-xs font-medium text-milky-brown/70">
-                  {p.cards.length === 0 ? (
-                    "—"
-                  ) : (
-                    <div className="flex flex-wrap gap-1">
-                      {p.cards.slice(-3).map((c) => (
-                        <span key={c.id} className="bg-milky-beige/50 px-2 py-0.5 rounded-full text-[10px] font-bold">
-                           {c.suit}
-                        </span>
-                      ))}
+            {players.map((p) => {
+              // 即時計算被動加成與預計步數
+              const sCount = p.cards.filter(c => c.suit === 'S' && !c.is_used).length;
+              const cCount = p.cards.filter(c => c.suit === 'C' && !c.is_used).length;
+              const mod = sCount - cCount;
+              const roundCard = p.cards.find(c => c.round === game.current_round);
+              const pred = Math.max(0, (roundCard?.points || 0) + mod);
+
+              return (
+                <tr key={p.id} className="border-t border-milky-beige/20 hover:bg-milky-apricot/5 transition-colors">
+                  <td className="px-6 py-4 font-black text-milky-brown">{p.name}</td>
+                  {rounds.map((r) => {
+                    const ans = p.answers[String(r)] as QuizChoice | undefined;
+                    return (
+                      <td key={r} className="px-2 py-4 font-mono text-xs font-bold text-milky-brown/60">
+                        {ans ?? "—"}
+                      </td>
+                    );
+                  })}
+                  <td className="px-6 py-4 text-xs font-medium text-milky-brown/70">
+                    {p.cards.length === 0 ? (
+                      "—"
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {p.cards.slice(-3).map((c) => (
+                          <span key={c.id} className="bg-milky-beige/50 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                             {c.suit}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 font-black text-milky-brown">{p.position}</td>
+                  <td className="px-6 py-4">
+                    <div className={`text-center font-black text-milky-brown`}>
+                      {mod > 0 ? `+${mod}` : mod}
                     </div>
-                  )}
-                </td>
-                <td className="px-6 py-4 font-black text-milky-brown">{p.position}</td>
-                <td className="px-6 py-4">
-                  <div className={`text-center font-black text-milky-brown`}>
-                    {(p.passive_modifiers || 0) > 0 ? `+${p.passive_modifiers}` : (p.passive_modifiers || 0)}
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                   <div className="text-center font-black text-milky-accent">
-                      {p.predicted_steps || 0} 步
-                   </div>
-                </td>
-                <td className="px-6 py-4">
-                   <div className="text-center font-black text-milky-accent">
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-center font-black text-milky-accent">
+                      {pred} 步
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-center font-black text-milky-accent">
                       ★ {p.stars}
-                   </div>
-                </td>
-              </tr>
-            ))}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
             {players.length === 0 && (
               <tr>
                 <td className="px-4 py-6 text-sm text-slate-500" colSpan={4 + rounds.length}>

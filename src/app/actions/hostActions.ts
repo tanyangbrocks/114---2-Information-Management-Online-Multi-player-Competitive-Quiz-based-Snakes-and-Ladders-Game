@@ -87,9 +87,7 @@ export async function addBotToGame(gameId: string) {
         position: 1,
         stars: 0,
         cards: [],
-        answers: {},
-        predicted_steps: 0,
-        passive_modifiers: 0
+        answers: {}
       });
 
     if (insertErr) {
