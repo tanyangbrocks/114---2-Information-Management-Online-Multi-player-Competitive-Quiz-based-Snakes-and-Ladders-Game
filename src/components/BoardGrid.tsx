@@ -4,7 +4,7 @@ import { useSnakeLadderBoard } from "@/hooks/useSnakeLadderBoard";
 import type { PlayerRow } from "@/types/game";
 import { cn } from "@/lib/cn";
 import { useEffect, useMemo, useRef } from "react";
-import { ESCALATORS, EELS } from "@/lib/game/boardEngine";
+import { ESCALATORS, EELS, bounceOverHundred, applyConnectors } from "@/lib/game/boardEngine";
 import { motion, useAnimation } from "framer-motion";
 
 
@@ -19,15 +19,13 @@ function getCellCoords(n: number) {
   return { x: x * 10 + 5, y: y * 10 + 5 };
 }
 
-export function BoardGrid({ players, selfId }: Props) {
+export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds = [] }: Props) {
   const { buildZigzagGrid } = useSnakeLadderBoard();
   const grid = buildZigzagGrid();
 
-
-
   return (
     <div className="relative w-full max-w-xl select-none aspect-square">
-      {/* 棋盤底層 */}
+      {/* ... (grid and svg layers remain the same) ... */}
       <div className="grid grid-cols-10 gap-1 sm:gap-1.5 h-full w-full">
         {grid.flatMap((row) =>
           row.map((cell) => {
@@ -45,7 +43,6 @@ export function BoardGrid({ players, selfId }: Props) {
         )}
       </div>
 
-      {/* SVG 連接線層 */}
       <svg className="absolute inset-0 pointer-events-none h-full w-full overflow-visible" viewBox="0 0 100 100">
         {ESCALATORS.map(([start, end], idx) => {
           const s = getCellCoords(start);
@@ -80,7 +77,6 @@ export function BoardGrid({ players, selfId }: Props) {
         })}
       </svg>
 
-      {/* 玩家棋子層 */}
       <div className="absolute inset-0 pointer-events-none">
         {players.map((p, idx) => (
           <PlayerToken
@@ -88,6 +84,8 @@ export function BoardGrid({ players, selfId }: Props) {
             player={p}
             isSelf={p.id === selfId}
             index={idx}
+            onClick={() => onPlayerClick?.(p.id)}
+            isTargetable={targetablePlayerIds.includes(p.id)}
           />
         ))}
       </div>
@@ -95,7 +93,19 @@ export function BoardGrid({ players, selfId }: Props) {
   );
 }
 
-function PlayerToken({ player, isSelf, index }: { player: PlayerRow; isSelf: boolean; index: number }) {
+function PlayerToken({ 
+  player, 
+  isSelf, 
+  index, 
+  onClick, 
+  isTargetable 
+}: { 
+  player: PlayerRow; 
+  isSelf: boolean; 
+  index: number;
+  onClick?: () => void;
+  isTargetable?: boolean;
+}) {
   const controls = useAnimation();
   const lastPosRef = useRef(player.position);
 
@@ -106,26 +116,69 @@ function PlayerToken({ player, isSelf, index }: { player: PlayerRow; isSelf: boo
       const from = lastPosRef.current;
       const to = player.position;
       
-      const steps = to - from;
+      // 等待一下，確保畫面轉場完成 (配合 Reveal 階段的動畫時間)
+      await new Promise(resolve => setTimeout(resolve, 1200));
 
-      if (Math.abs(steps) > 0) {
+      // 1. 計算「走步」路徑 (從 from 走到 landingSpot)
+      // 使用 player.predicted_steps 來回推中間經過的格子
+      const steps = player.predicted_steps || 0;
+      const steppingPath: number[] = [];
+      
+      if (steps !== 0) {
         const direction = steps > 0 ? 1 : -1;
-        const durationPerStep = 0.15;
-
-        for (let i = from + direction; ; i += direction) {
-          const coords = getCellCoords(i);
-          await controls.start({
-            left: `${coords.x}%`,
-            top: `${coords.y}%`,
-            transition: { duration: durationPerStep, ease: "linear" }
-          });
-          if (i === to) break;
+        const absSteps = Math.abs(steps);
+        for (let i = 1; i <= absSteps; i++) {
+          steppingPath.push(bounceOverHundred(from + i * direction));
         }
       }
+
+      // 2. 計算「傳送」路徑 (如果有梯子或電鰻)
+      const landingSpot = steppingPath.length > 0 ? steppingPath[steppingPath.length - 1] : from;
+      const { path: connectorPath } = applyConnectors(landingSpot);
+      
+      // 3. 處理抵達 100 歸零的情況
+      const finalPath = [...steppingPath];
+      // connectorPath[0] 就是 landingSpot，所以從 1 開始
+      for (let i = 1; i < connectorPath.length; i++) {
+        finalPath.push(connectorPath[i]);
+      }
+      
+      // 如果最終位置是 1 且前一個不是 1，代表進了 100 歸零
+      if (to === 1 && finalPath[finalPath.length - 1] !== 1) {
+        if (finalPath[finalPath.length - 1] !== 100) finalPath.push(100);
+        finalPath.push(1);
+      } else if (finalPath.length === 0 || finalPath[finalPath.length - 1] !== to) {
+        // 安全機制：確保最後一格是目標位置
+        finalPath.push(to);
+      }
+
+      // 執行移動動畫
+      // 「走步」部分總共 1 秒
+      const steppingCount = steppingPath.length;
+      const durationPerStep = steppingCount > 0 ? 1 / steppingCount : 0.2;
+
+      for (let i = 0; i < finalPath.length; i++) {
+        const cell = finalPath[i];
+        const coords = getCellCoords(cell);
+        
+        // 判斷這一步是「走步」還是「傳送/跳轉」
+        const isConnector = i >= steppingCount;
+        const duration = isConnector ? 1.0 : durationPerStep;
+        
+        await controls.start({
+          left: `${coords.x}%`,
+          top: `${coords.y}%`,
+          transition: { 
+            duration: duration, 
+            ease: isConnector ? "easeInOut" : "linear" 
+          }
+        });
+      }
+
       lastPosRef.current = to;
     }
     void animateMovement();
-  }, [player.position, controls]);
+  }, [player.position, controls, player.predicted_steps]);
 
   const initialCoords = useMemo(() => getCellCoords(lastPosRef.current), []);
   
@@ -139,22 +192,32 @@ function PlayerToken({ player, isSelf, index }: { player: PlayerRow; isSelf: boo
         left: `${initialCoords.x}%`,
         top: `${initialCoords.y}%`
       }}
-      className="absolute h-[10%] w-[10%] flex items-center justify-center pointer-events-none"
+      className={cn(
+        "absolute h-[10%] w-[10%] flex items-center justify-center transition-all",
+        isTargetable ? "pointer-events-auto cursor-pointer scale-110 z-[60]" : "pointer-events-none"
+      )}
       style={{ 
         zIndex: isSelf ? 50 : 10 + index,
         x: `calc(-50% + ${offsetX}px)`,
         y: `calc(-50% + ${offsetY}px)`
       }}
+      onClick={onClick}
     >
       <div
         className={cn(
-          "h-5 w-5 sm:h-6 sm:w-6 rounded-full border-2 border-white shadow-xl transition-transform",
-          isSelf ? "bg-[#5D4037] ring-4 ring-white/50 scale-125 z-50" : "bg-white"
+          "h-5 w-5 sm:h-6 sm:w-6 rounded-full border-2 border-white shadow-xl transition-all",
+          isSelf ? "bg-[#5D4037] ring-4 ring-white/50 scale-125 z-50" : "bg-white",
+          isTargetable && "ring-4 ring-milky-accent animate-pulse bg-milky-accent/20"
         )}
       >
         {isSelf && (
           <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white px-2 py-0.5 rounded-md shadow-lg border border-milky-beige">
             <p className="text-[8px] font-black text-milky-brown whitespace-nowrap">ME</p>
+          </div>
+        )}
+        {isTargetable && (
+          <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-milky-accent text-white px-2 py-0.5 rounded-full shadow-lg whitespace-nowrap text-[8px] font-black animate-bounce">
+            TARGET
           </div>
         )}
       </div>
@@ -165,4 +228,6 @@ function PlayerToken({ player, isSelf, index }: { player: PlayerRow; isSelf: boo
 type Props = {
   players: PlayerRow[];
   selfId?: string | null;
+  onPlayerClick?: (playerId: string) => void;
+  targetablePlayerIds?: string[];
 };

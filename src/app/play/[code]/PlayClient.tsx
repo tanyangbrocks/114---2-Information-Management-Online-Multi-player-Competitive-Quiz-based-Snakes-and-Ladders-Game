@@ -145,6 +145,7 @@ export function PlayClient({ params }: Props) {
   const settledRoundRef = useRef<number>(-1);
   const [skillBusy, setSkillBusy] = useState(false);
   const [skillPreview, setSkillPreview] = useState<AvailableSkill | null>(null);
+  const [skillStage, setSkillStage] = useState<"preview" | "target" | "direction" | "idle">("idle");
   const [selectedTarget, setSelectedTarget] = useState<string>("");
   const [cDirection, setCDirection] = useState<1 | -1 | null>(null);
   const [hasActedSkillState, setHasActedSkillState] = useState(false);
@@ -228,6 +229,7 @@ export function PlayClient({ params }: Props) {
 
   useEffect(() => {
     setSkillPreview(null);
+    setSkillStage("idle");
     setSelectedTarget("");
     setCDirection(null);
     setPendingCounter(null);
@@ -327,6 +329,7 @@ export function PlayClient({ params }: Props) {
       if (res.success) {
         if (skill.actionType !== "S-2") setHasActedSkillState(true);
         setSkillPreview(null);
+        setSkillStage("idle");
         setSelectedTarget("");
         setCDirection(null);
         await reload(true);
@@ -519,7 +522,7 @@ export function PlayClient({ params }: Props) {
                 {availableSkills.length === 0 ? <div className="py-20 text-center bg-white/40 rounded-[4rem] border-4 border-dashed border-milky-beige/50"><p className="text-sm font-black text-milky-brown/20">目前沒有可發動的技能</p></div> : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {availableSkills.map((skill) => (
-                      <button key={skill.actionType} onClick={() => { setSkillPreview(skill); setIsDrawerOpen(false); }} className="group rounded-[3rem] bg-white p-8 text-left shadow-sm border-2 border-transparent hover:border-milky-apricot transition-all hover:shadow-2xl hover:-translate-y-2">
+                      <button key={skill.actionType} onClick={() => { setSkillPreview(skill); setSkillStage("preview"); setIsDrawerOpen(false); }} className="group rounded-[3rem] bg-white p-8 text-left shadow-sm border-2 border-transparent hover:border-milky-apricot transition-all hover:shadow-2xl hover:-translate-y-2">
                         <div className="flex items-center justify-between mb-2"><span className="text-2xl font-black text-milky-brown">{skill.name}</span></div>
                         <p className="text-xs font-bold text-milky-brown/40 leading-relaxed line-clamp-2">{skill.description}</p>
                       </button>
@@ -531,24 +534,87 @@ export function PlayClient({ params }: Props) {
           </div>
         )}
 
-        {skillPreview && (
+        {/* 技能流程：預覽與確認階段 */}
+        {skillPreview && skillStage === "preview" && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-milky-brown/40 backdrop-blur-md">
             <MotionWrapper type="bounce" className="w-full max-w-sm">
               <div className="pudding-card shadow-2xl border-4 border-white text-center">
                  <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-milky-brown text-white shadow-xl"><Sparkles className="h-10 w-10" /></div>
                  <h3 className="text-3xl font-black text-milky-brown mb-3">{skillPreview.name}</h3>
                  <p className="text-sm font-bold text-milky-brown/60 mb-8">{skillPreview.description}</p>
-                 {skillPreview.requiresTarget && (
-                    <div className="space-y-4 mb-8"><p className="text-[10px] font-black text-milky-brown/30 uppercase">選擇目標</p>
-                      <div className="grid grid-cols-2 gap-3">{players.filter(p => p.id !== self.id).map(p => (<button key={p.id} onClick={() => setSelectedTarget(p.id)} className={`rounded-3xl border-4 px-4 py-4 text-sm font-black transition-all ${selectedTarget === p.id ? 'border-milky-apricot bg-milky-apricot/10 text-milky-brown' : 'border-milky-beige/30 text-milky-brown/30'}`}>{p.name}</button>))}</div>
-                    </div>
-                 )}
-                 {(skillPreview.actionType === "C-1" || skillPreview.actionType === "C-2") && (
-                   <div className="space-y-4 mb-8"><p className="text-[10px] font-black text-milky-brown/30 uppercase">選擇方向</p>
-                      <div className="flex gap-4"><button onClick={() => setCDirection(1)} className={`flex-1 rounded-3xl border-4 py-5 font-black transition-all ${cDirection === 1 ? 'border-milky-apricot bg-milky-apricot/10 text-milky-brown' : 'border-milky-beige/30 text-milky-brown/30'}`}>前進</button><button onClick={() => setCDirection(-1)} className={`flex-1 rounded-3xl border-4 py-5 font-black transition-all ${cDirection === -1 ? 'border-milky-apricot bg-milky-apricot/10 text-milky-brown' : 'border-milky-beige/30 text-milky-brown/30'}`}>後退</button></div>
-                   </div>
-                 )}
-                 <div className="flex gap-4"><button onClick={() => { setSkillPreview(null); setIsDrawerOpen(true); }} className="pudding-button-secondary flex-1">返回</button><button disabled={skillBusy || (skillPreview.requiresTarget && !selectedTarget) || ((skillPreview.actionType === 'C-1' || skillPreview.actionType === 'C-2') && !cDirection)} onClick={() => handleCastSkill(skillPreview)} className="pudding-button-primary flex-1 shadow-milky-apricot/30">{skillBusy ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : "確認發動"}</button></div>
+                 <div className="flex gap-4">
+                   <button onClick={() => { setSkillPreview(null); setSkillStage("idle"); setIsDrawerOpen(true); }} className="pudding-button-secondary flex-1">取消</button>
+                   <button 
+                     onClick={() => {
+                       if (skillPreview.requiresTarget) {
+                         setSkillStage("target");
+                       } else if (skillPreview.actionType === "C-1") {
+                         setSkillStage("direction");
+                       } else {
+                         handleCastSkill(skillPreview);
+                       }
+                     }} 
+                     className="pudding-button-primary flex-1 shadow-milky-apricot/30"
+                   >
+                     確認發動
+                   </button>
+                 </div>
+              </div>
+            </MotionWrapper>
+          </div>
+        )}
+
+        {/* 技能流程：對象選擇階段 */}
+        {skillPreview && skillStage === "target" && (
+          <div className="fixed inset-0 z-[110] flex flex-col items-center justify-center p-4 bg-milky-brown/60 backdrop-blur-md">
+             <div className="mb-8 text-center">
+               <h3 className="text-3xl font-black text-white mb-2">選擇技能目標</h3>
+               <p className="text-white/60 font-bold">請點擊下方清單或棋盤上的玩家頭像</p>
+             </div>
+             <div className="w-full max-w-md grid grid-cols-2 gap-4 mb-8">
+               {players.filter(p => p.id !== self.id).map(p => (
+                 <button 
+                   key={p.id} 
+                   onClick={() => {
+                     setSelectedTarget(p.id);
+                     if (skillPreview.actionType === "C-2") {
+                       setSkillStage("direction");
+                     } else {
+                       handleCastSkill(skillPreview);
+                     }
+                   }} 
+                   className={`pudding-card flex flex-col items-center gap-3 border-4 transition-all hover:scale-105 ${selectedTarget === p.id ? 'border-milky-apricot bg-white' : 'border-white/20 bg-white/10 text-white'}`}
+                 >
+                   <div className="h-12 w-12 rounded-2xl bg-milky-brown text-white flex items-center justify-center shadow-lg"><User className="h-6 w-6" /></div>
+                   <span className="font-black">{p.name}</span>
+                 </button>
+               ))}
+             </div>
+             <button onClick={() => setSkillStage("preview")} className="pudding-button-secondary px-10">返回預覽</button>
+          </div>
+        )}
+
+        {/* 技能流程：方向選擇階段 */}
+        {skillPreview && skillStage === "direction" && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-milky-brown/40 backdrop-blur-md">
+            <MotionWrapper type="bounce" className="w-full max-w-sm">
+              <div className="pudding-card shadow-2xl border-4 border-white text-center">
+                 <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-milky-accent text-white shadow-xl"><Sparkles className="h-10 w-10" /></div>
+                 <h3 className="text-3xl font-black text-milky-brown mb-3">選擇移動方向</h3>
+                 <p className="text-sm font-bold text-milky-brown/60 mb-8">
+                   {skillPreview.actionType === "C-1" ? "讓自己移動 1 格" : `讓 ${players.find(p => p.id === selectedTarget)?.name} 移動 1 格`}
+                 </p>
+                 <div className="flex gap-4 mb-8">
+                   <button onClick={() => { setCDirection(1); handleCastSkill(skillPreview); }} className="flex-1 pudding-card border-4 border-milky-beige/30 hover:border-milky-apricot transition-all py-8 flex flex-col items-center gap-2">
+                     <span className="text-4xl">⬆️</span>
+                     <span className="font-black text-milky-brown">前進</span>
+                   </button>
+                   <button onClick={() => { setCDirection(-1); handleCastSkill(skillPreview); }} className="flex-1 pudding-card border-4 border-milky-beige/30 hover:border-milky-apricot transition-all py-8 flex flex-col items-center gap-2">
+                     <span className="text-4xl">⬇️</span>
+                     <span className="font-black text-milky-brown">後退</span>
+                   </button>
+                 </div>
+                 <button onClick={() => setSkillStage(skillPreview.requiresTarget ? "target" : "preview")} className="pudding-button-secondary w-full">返回上一步</button>
               </div>
             </MotionWrapper>
           </div>
@@ -588,7 +654,21 @@ export function PlayClient({ params }: Props) {
           </MotionWrapper>
         )}
 
-        <BoardGrid players={players} selfId={self.id} />
+        <BoardGrid 
+          players={players} 
+          selfId={self.id} 
+          onPlayerClick={(targetId) => {
+            if (skillStage === "target") {
+              setSelectedTarget(targetId);
+              if (skillPreview?.actionType === "C-2") {
+                setSkillStage("direction");
+              } else if (skillPreview) {
+                handleCastSkill(skillPreview);
+              }
+            }
+          }}
+          targetablePlayerIds={skillStage === "target" ? players.filter(p => p.id !== self.id).map(p => p.id) : []}
+        />
       </section>
 
       <aside className="w-full max-w-sm space-y-6 pudding-card !bg-milky-white/50 lg:sticky lg:top-8 border-none shadow-none">
