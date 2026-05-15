@@ -534,35 +534,19 @@ export function PlayClient({ params }: Props) {
         {isWaitingSettle && (
           <MotionWrapper type="bounce" className="p-10 pudding-card !bg-white/90 border-4 border-milky-apricot shadow-2xl flex flex-col items-center gap-8 text-center my-6">
             <div className="space-y-2">
-              <h3 className="text-3xl font-black text-milky-brown tracking-tighter">準備好前進了嗎？</h3>
-              <p className="text-milky-brown/60 font-bold">點擊下方按鈕開始播放移動動畫</p>
+              <h3 className="text-3xl font-black text-milky-brown tracking-tighter">冒險結算中</h3>
+              <p className="text-milky-brown/60 font-bold">棋子應會自動移動。若無反應，請點擊下方按鈕手動出發</p>
             </div>
             
             <button 
               onClick={() => {
                 if (settledRoundRef.current === game.current_round) return;
-                const card = self.cards.find((c) => c.round === game.current_round);
-                if (!card || card.is_used) return;
-
-                const move = moveBySteps(self.position, card.points, {
-                  spades: suitCounts.S,
-                  clubs: suitCounts.C
-                });
-
-                const moveDist = (card.points || 0) + suitCounts.S - suitCounts.C;
-                if (move.position < (self.position + Math.max(0, moveDist))) {
-                  const hearts = self.cards.filter(c => !c.is_used && c.suit === 'H');
-                  if (hearts.length > 0) {
-                    setSnakeTarget({ position: move.position, starsGained: move.starsGained, cards: hearts });
-                    return;
-                  }
-                }
-                
-                setLocalMoveTarget({ pos: move.position, stars: move.starsGained });
+                // 簡化邏輯：直接拿資料庫當前的座標來強迫啟動動畫
+                setLocalMoveTarget({ pos: self.position, stars: 0 });
               }}
               className="pudding-button-primary text-2xl px-16 py-6 shadow-2xl bg-milky-apricot animate-bounce border-b-8 border-milky-brown/20"
             >
-              🚀 開始前進！
+              🚀 沒反應？手動出發！
             </button>
           </MotionWrapper>
         )}
@@ -793,6 +777,7 @@ export function PlayClient({ params }: Props) {
           players={players} 
           selfId={self.id} 
           phase={game.phase}
+          currentRound={game.current_round}
           manualTarget={localMoveTarget?.pos}
           onMoveComplete={() => {
             if (game.phase === "settle" && settledRoundRef.current !== game.current_round) {

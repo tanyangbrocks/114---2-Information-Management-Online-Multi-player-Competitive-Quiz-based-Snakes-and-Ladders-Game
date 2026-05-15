@@ -25,11 +25,12 @@ type Props = {
   onPlayerClick?: (playerId: string) => void;
   targetablePlayerIds?: string[];
   phase: string;
+  currentRound: number;
   manualTarget?: number | null;
   onMoveComplete?: () => void;
 };
 
-export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds = [], phase, manualTarget, onMoveComplete }: Props) {
+export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds = [], phase, currentRound, manualTarget, onMoveComplete }: Props) {
   const { buildZigzagGrid } = useSnakeLadderBoard();
   const grid = buildZigzagGrid();
 
@@ -99,6 +100,7 @@ export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds 
             onClick={() => onPlayerClick?.(p.id)}
             isTargetable={targetablePlayerIds.includes(p.id)}
             phase={phase}
+            currentRound={currentRound}
             manualTarget={p.id === selfId ? manualTarget : null}
             onMoveComplete={onMoveComplete}
           />
@@ -130,6 +132,7 @@ function PlayerToken({
   onClick, 
   isTargetable,
   phase,
+  currentRound,
   manualTarget,
   onMoveComplete
 }: { 
@@ -139,6 +142,7 @@ function PlayerToken({
   onClick?: () => void;
   isTargetable?: boolean;
   phase?: string;
+  currentRound: number;
   manualTarget?: number | null;
   onMoveComplete?: () => void;
 }) {
@@ -160,13 +164,18 @@ function PlayerToken({
   }, [phase, player.position, controls]);
 
   const isMovingRef = useRef(false);
+  const processedPosRef = useRef<{ round: number; pos: number } | null>(null);
 
   useEffect(() => {
     // 當進入 settle 或 skill 階段，且 (位置與上次紀錄不同 或 有手動目標)，且當前不在動畫中
+    const isAlreadyProcessed = processedPosRef.current?.round === currentRound && processedPosRef.current?.pos === player.position;
     const hasNewPos = player.position !== lastPosRef.current;
     const hasManual = manualTarget !== null && manualTarget !== undefined && manualTarget !== lastPosRef.current;
 
-    if ((phase === "settle" || phase === "skill") && (hasNewPos || hasManual) && !isMovingRef.current) {
+    if ((phase === "settle" || phase === "skill") && (hasNewPos || hasManual) && !isMovingRef.current && !isAlreadyProcessed) {
+      if (phase === "settle") {
+        processedPosRef.current = { round: currentRound, pos: player.position };
+      }
       void animateMovement(hasManual ? manualTarget : player.position);
     }
 
@@ -174,6 +183,13 @@ function PlayerToken({
       isMovingRef.current = true;
       const from = lastPosRef.current;
       const to = targetPos;
+
+      // [視覺防震]：在動畫開始前，強迫將棋子鎖定在「視覺出發點」，防止延遲造成的瞬移
+      const startCoords = getCellCoords(from);
+      controls.set({
+        left: `${startCoords.x}%`,
+        top: `${startCoords.y}%`
+      });
       
       const steppingPath: number[] = [];
       const connectorPaths: number[][] = [];
@@ -232,7 +248,7 @@ function PlayerToken({
       isMovingRef.current = false;
       onMoveComplete?.();
     }
-  }, [phase, player.position, manualTarget, controls, onMoveComplete]);
+  }, [phase, player.position, manualTarget, controls, onMoveComplete, currentRound]);
 
   // 初始渲染位置
   // 初始渲染位置：在結算階段鎖定在移動前的位置，避免因資料更新導致瞬移

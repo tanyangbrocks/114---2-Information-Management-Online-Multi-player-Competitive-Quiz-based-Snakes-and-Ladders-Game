@@ -64,6 +64,7 @@ export type MoveResult = {
   position: number;
   starsGained: number;
   path: number[];
+  usedIgnoreEel: boolean;
 };
 
 export type MoveModifiers = {
@@ -99,7 +100,12 @@ export function moveBySteps(pos: number, baseSteps: number, modifiers: MoveModif
   // 防止後退到 1 以下
   if (p < 1) p = 1;
   
+  // 檢查如果「不使用防護」會在哪裡，用來判斷是否真的觸發了保命
+  const { position: normalEndPos } = applyConnectors(p, false);
   const { position: endPos, path: connectorPath } = applyConnectors(p, modifiers.ignoreEel);
+  
+  // 如果「有防護時的位置」不同於「沒防護時的位置」，代表真的觸發了保命
+  const usedIgnoreEel = !!(modifiers.ignoreEel && (endPos !== normalEndPos));
   
   let starsGained = 0;
   let finalPos = endPos;
@@ -108,10 +114,10 @@ export function moveBySteps(pos: number, baseSteps: number, modifiers: MoveModif
   if (finalPos === 100) {
     starsGained = 1;
     finalPos = 1;
-    path.push(1, 1); // 簡化處理
+    path.push(1); 
   }
 
-  return { position: finalPos, starsGained, path };
+  return { position: finalPos, starsGained, path, usedIgnoreEel };
 }
 
 /** 產生棋盤顯示順序：索引 0 = 最上列（100 附近），符合「由上往下看」的 UI。 */

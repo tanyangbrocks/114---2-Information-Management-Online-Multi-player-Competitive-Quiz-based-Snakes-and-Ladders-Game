@@ -5,11 +5,11 @@ import { QRInvitePanel } from "@/components/QRInvitePanel";
 import { createClient } from "@/lib/supabase/browser";
 import { rankPlayers } from "@/lib/game/ranking";
 import { useGameRealtime } from "@/hooks/useGameRealtime";
-import { resolveSkillsAndStartSettle } from "@/app/actions/resolveSkills";
+import { resolveSkillsAndStartSettle, startSkillResolution, resolveNextSkill } from "@/app/actions/resolveSkills";
 import { useMemo, useState, useEffect, useRef, use } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence } from "framer-motion";
-import { Loader2, Radio, SkipForward, Trophy, Sparkles, LayoutDashboard, Gift, Plus, Minus, X, UserPlus } from "lucide-react";
+import { Loader2, Radio, SkipForward, Trophy, Sparkles, LayoutDashboard, Gift, Plus, Minus, X, UserPlus, CheckCircle2 } from "lucide-react";
 import { giveCardsToPlayer, addBotToGame } from "@/app/actions/hostActions";
 import { moveBySteps } from "@/lib/game/boardEngine";
 import { countSuits } from "@/lib/game/skillEngine";
@@ -129,50 +129,68 @@ export function HostGameClient({ params }: Props) {
     }
   };
 
-  const enterSkillPhase = async () => {
+  const startResolution = async () => {
     if (!game) return;
     setBusy("next");
     try {
-      const { error: upErr } = await supabase.from("games").update({ phase: "skill" }).eq("id", game.id);
-      if (upErr) throw upErr;
+      await startSkillResolution(game.id);
       await reload();
       await sendSignal();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "進入技能發動失敗");
+      alert(e instanceof Error ? e.message : "啟動仲裁失敗");
     } finally {
       setBusy(null);
     }
   };
 
+  // 序列仲裁處理器
+  useEffect(() => {
+    if (game?.phase === "skill" && authorized) {
+        // 檢查是否有 pending 狀態的技能
+        const hasPending = skillActions.some(a => a.status === "pending" || a.status === "ready");
+        const isWaiting = skillActions.some(a => a.status === "waiting_counter" || a.status === "waiting_choice");
+        
+        if (hasPending && !isWaiting && busy === null) {
+            const timer = setTimeout(async () => {
+                await resolveNextSkill(game.id, game.current_round);
+                await reload();
+                await sendSignal();
+            }, 1000); 
+            return () => clearTimeout(timer);
+        }
+    }
+  }, [game?.phase, game?.current_round, skillActions, authorized, game?.id, reload, busy, sendSignal]);
+
   const [waitingActionId, setWaitingActionId] = useState<string | null>(null);
   const [waitingTargetName, setWaitingTargetName] = useState<string | null>(null);
 
-  // 當技能列表更新時，同步反制等待狀態
   useEffect(() => {
-    if (!skillActions || !waitingActionId) return;
-    const stillWaiting = skillActions.some(a => a.id === waitingActionId && a.status === 'waiting_counter');
-    if (!stillWaiting) {
+    const waiting = skillActions.find(a => a.status === "waiting_counter");
+    if (waiting) {
+      setWaitingActionId(waiting.id);
+      const t = players.find(p => p.id === waiting.target_player_id);
+      setWaitingTargetName(t?.name || "玩家");
+    } else {
       setWaitingActionId(null);
       setWaitingTargetName(null);
     }
-  }, [skillActions, waitingActionId]);
+  }, [skillActions, players]);
 
   const settleMoves = async () => {
     if (!game) return;
     setBusy("next");
     try {
       const res = await resolveSkillsAndStartSettle(game.id, game.current_round);
-      if (res.waitingForCounter) {
-        setWaitingActionId(res.actionId);
-        setWaitingTargetName(res.targetName);
-      } else {
+      if (res.success) {
         setWaitingActionId(null);
         setWaitingTargetName(null);
+        await reload();
+        await sendSignal();
+      } else {
+        alert(res.error || "結算失敗");
       }
-      await reload();
-      await sendSignal();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "結算失敗");
+      alert(e instanceof Error ? e.message : "操作失敗");
     } finally {
       setBusy(null);
     }
@@ -431,30 +449,42 @@ export function HostGameClient({ params }: Props) {
             )}
             {game.phase === "reveal" && (
               <button
-                onClick={enterSkillPhase}
+                onClick={startResolution}
                 disabled={busy !== null}
-                className="pudding-button bg-milky-brown text-white hover:opacity-90 flex items-center gap-2"
+                className="pudding-button bg-milky-accent text-white hover:opacity-90 flex items-center gap-2 shadow-lg"
               >
                 {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                進入技能階段
+                開始技能處理
               </button>
             )}
             {game.phase === "skill" && (
               <div className="flex items-center gap-4">
-                {waitingActionId && (
-                  <div className="flex items-center gap-2 bg-milky-accent/20 border-2 border-milky-accent px-4 py-2 rounded-2xl animate-pulse">
-                     <Loader2 className="h-4 w-4 animate-spin text-milky-accent" />
-                     <span className="text-xs font-black text-milky-brown uppercase tracking-widest">等待 {waitingTargetName} 反制中</span>
+                {skillActions.some(a => a.status === "pending" || a.status === "waiting_counter" || a.status === "ready") ? (
+                  <div className="flex items-center gap-3 bg-white/80 border-2 border-milky-beige px-6 py-3 rounded-full shadow-sm">
+                    <Loader2 className="h-5 w-5 text-milky-accent animate-spin" />
+                    <span className="text-sm font-black text-milky-brown">技能仲裁中...</span>
+                    {skillActions.some(a => a.status === "waiting_counter") && (
+                        <span className="text-[10px] bg-milky-apricot text-white px-2 py-0.5 rounded-full animate-pulse ml-2">
+                            等待玩家反制中
+                        </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="flex items-center gap-3 bg-milky-accent/10 border-2 border-milky-accent px-6 py-3 rounded-full shadow-sm animate-bounce">
+                        <CheckCircle2 className="h-5 w-5 text-milky-accent" />
+                        <span className="text-sm font-black text-milky-accent">技能處理完畢！</span>
+                    </div>
+                    <button
+                        onClick={settleMoves}
+                        disabled={busy !== null}
+                        className="pudding-button bg-milky-apricot text-milky-brown hover:opacity-90 flex items-center gap-2 shadow-lg mt-2"
+                    >
+                        {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />}
+                        執行最終結算移動 🚀
+                    </button>
                   </div>
                 )}
-                <button
-                  onClick={settleMoves}
-                  disabled={busy !== null || !!waitingActionId}
-                  className="pudding-button bg-milky-apricot text-milky-brown hover:opacity-90 flex items-center gap-2 shadow-lg"
-                >
-                  {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />}
-                  執行結算
-                </button>
               </div>
             )}
             {game.phase === "settle" && (

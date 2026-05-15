@@ -17,7 +17,7 @@ export type GameCard = {
   is_used?: boolean; // 用於標記卡牌是否被消耗
 };
 
-export type SkillActionType = "S-1" | "S-2" | "C-1" | "C-2" | "H-1" | "U-1" | "U-2" | "U-3" | "D-COUNTER" | "H-COUNTER" | "PASS";
+export type SkillActionType = "S-1" | "S-2" | "C-1" | "C-2" | "H-1" | "U-1" | "U-2" | "U-3" | "D-1" | "D-2" | "D-COUNTER" | "H-COUNTER" | "PASS";
 
 export type SkillAction = {
   id: string; // uuid
@@ -29,7 +29,7 @@ export type SkillAction = {
   consumed_cards: string[]; // 卡牌 ID 陣列
   metadata?: Record<string, unknown>;
   created_at: string;
-  status: "pending" | "resolved" | "cancelled" | "waiting_counter" | "ready";
+  status: "pending" | "resolved" | "cancelled" | "waiting_counter" | "waiting_choice" | "ready";
 };
 
 export type GameRow = {

@@ -1,9 +1,115 @@
 "use server";
 
-import { createClient } from "@supabase/supabase-js";
-import type { GameCard, Suit, SkillActionType, PlayerRow } from "@/types/game";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { GameCard, Suit, SkillActionType, PlayerRow, SkillAction } from "@/types/game";
 import { countSuits } from "@/lib/game/skillEngine";
-import { ESCALATORS, moveBySteps } from "@/lib/game/boardEngine";
+import { ESCALATORS, moveBySteps, bounceOverHundred } from "@/lib/game/boardEngine";
+import { rankPlayers } from "@/lib/game/ranking";
+
+export async function startSkillResolution(gameId: string) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  // 將遊戲階段改為 skill
+  await supabase.from("games").update({ phase: "skill" }).eq("id", gameId);
+}
+
+export async function resolveNextSkill(gameId: string, round: number) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  try {
+    // 1. 獲取所有玩家與待處理技能
+    const { data: players } = await supabase.from("players").select("*").eq("game_id", gameId);
+    const { data: actions } = await supabase.from("skill_actions")
+      .select("*")
+      .eq("game_id", gameId)
+      .eq("round", round)
+      .eq("status", "pending");
+
+    if (!players || !actions || actions.length === 0) return { done: true };
+
+    // 2. 排序仲裁：依據當前排名 (排名越前 Rank 1，越早處理)
+    // 這樣排名靠後的人發動技能，才能「蓋掉」前面人的效果 (如果有位置衝突)
+    const rankedPlayers = [...players].sort((a, b) => {
+      if (b.stars !== a.stars) return b.stars - a.stars;
+      return b.position - a.position;
+    });
+
+    const sortedActions = [...actions].sort((a, b) => {
+      const rankA = rankedPlayers.findIndex(r => r.id === a.player_id);
+      const rankB = rankedPlayers.findIndex(r => r.id === b.player_id);
+      return rankA - rankB; 
+    });
+
+    const action = sortedActions[0];
+    const caster = players.find(p => p.id === action.player_id);
+    const targetPlayer = action.target_player_id ? players.find(p => p.id === action.target_player_id) : null;
+
+    // 3. 檢查是否有菱形反制機會 (針對型技能且對象有2張菱形)
+    if (targetPlayer && ["S-1", "D-1", "D-2", "C-2", "U-2"].includes(action.action_type)) {
+      const diamonds = (targetPlayer.cards as GameCard[]).filter(c => !c.is_used && c.suit === "D");
+      if (diamonds.length >= 2) {
+        // 進入攔截階段，等待玩家回應
+        await supabase.from("skill_actions").update({ status: "waiting_counter" }).eq("id", action.id);
+        return { done: false, intercepting: true };
+      }
+    }
+
+    // 4. 無反制或不符反制條件，直接執行
+    await executeSkillEffect(supabase, action, players);
+    await supabase.from("skill_actions").update({ status: "resolved" }).eq("id", action.id);
+
+    return { done: false };
+  } catch (e) {
+    console.error(e);
+    return { error: true };
+  }
+}
+
+async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction, players: PlayerRow[]) {
+  const player = players.find(p => p.id === action.player_id);
+  const target = players.find(p => p.id === action.target_player_id);
+  if (!player) return;
+
+
+
+  switch (action.action_type) {
+    case "S-1": // 指定後退 3 步
+      if (target) {
+        const nextPos = Math.max(1, target.position - 3);
+        await supabase.from("players").update({ position: nextPos }).eq("id", target.id);
+      }
+      break;
+    case "S-2": // 抽 1 張牌
+      // 這裡假設 S-2 已經在 PlayClient 抽過了，如果沒抽，這裡要補
+      break;
+    case "D-1": // 目標星星 -1
+      if (target) {
+        await supabase.from("players").update({ stars: Math.max(0, target.stars - 1) }).eq("id", target.id);
+      }
+      break;
+    case "D-2": // 偷取目標星星
+      if (target && target.stars > 0) {
+        await supabase.from("players").update({ stars: target.stars - 1 }).eq("id", target.id);
+        await supabase.from("players").update({ stars: player.stars + 1 }).eq("id", player.id);
+      }
+      break;
+    case "C-1": // 獲得 1 顆星
+      await supabase.from("players").update({ stars: player.stars + 1 }).eq("id", player.id);
+      break;
+    case "C-2": // 指定互換位置
+      if (target) {
+        await supabase.from("players").update({ position: target.position }).eq("id", player.id);
+        await supabase.from("players").update({ position: player.position }).eq("id", target.id);
+      }
+      break;
+  }
+}
 
 export async function resolveSkillsAndStartSettle(gameId: string, round: number) {
   try {
@@ -157,9 +263,21 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
     // 5. 執行基礎移動結算 (根據預計步數)
     for (const p of Array.from(playerMap.values())) {
       const steps = p.predicted_steps || 0;
-      if (steps > 0 || p.position === 100) {
-        // 使用 moveBySteps 確保反彈與機關邏輯正確 (不傳入 modifiers 因為 passiveMod 已經算在 predicted_steps 裡了)
-        const { position: nextPos, starsGained } = moveBySteps(p.position, steps, {});
+      if (steps !== 0 || p.position === 100) {
+        // 檢查玩家是否有紅心牌 (保命牌)
+        const heartCard = p.cards.find((c: GameCard) => !c.is_used && c.suit === "H");
+        const hasHeart = !!heartCard;
+
+        // 執行移動 (傳入 ignoreEel 為 hasHeart)
+        const { position: nextPos, starsGained, usedIgnoreEel } = moveBySteps(p.position, steps, {
+          ignoreEel: hasHeart
+        });
+        
+        // 如果移動過程中真的觸發了保命 (遇到了電鰻但被忽略)，則消耗那張紅心牌
+        if (usedIgnoreEel && heartCard) {
+          heartCard.is_used = true;
+        }
+
         p.position = nextPos;
         p.stars += starsGained;
       }
