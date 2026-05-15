@@ -106,7 +106,6 @@ function PlayerToken({ player, isSelf, index }: { player: PlayerRow; isSelf: boo
       const from = lastPosRef.current;
       const to = player.position;
       
-      const connector = [...ESCALATORS, ...EELS].find(([_, t]) => t === to);
       const steps = to - from;
 
       if (Math.abs(steps) > 0) {
@@ -129,6 +128,9 @@ function PlayerToken({ player, isSelf, index }: { player: PlayerRow; isSelf: boo
   }, [player.position, controls]);
 
   const initialCoords = useMemo(() => getCellCoords(lastPosRef.current), []);
+  
+  const offsetX = (index % 3 - 1) * 8;
+  const offsetY = (Math.floor(index / 3) - 1) * 8;
 
   return (
     <motion.div

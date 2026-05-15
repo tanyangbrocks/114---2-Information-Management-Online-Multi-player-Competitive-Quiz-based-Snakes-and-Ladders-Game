@@ -26,14 +26,14 @@ export function parseRoundsConfig(raw: unknown): RoundConfig[] {
 
 export function parseCards(raw: unknown): GameCard[] {
   if (!Array.isArray(raw)) return [];
-  return raw.map((c: any) => ({
+  return raw.map((c: Record<string, unknown>) => ({
       id: String(c.id || ""),
       name: String(c.name || "未知名卡牌"),
       points: Number(c.points || 0),
       effect: String(c.effect || ""),
       slot: Number(c.slot || 1) as 1 | 2,
       round: Number(c.round || 0),
-      suit: (c.suit as Suit) || "S",
+      suit: isSuit(c.suit) ? c.suit : "S",
       is_used: Boolean(c.is_used)
     }));
 }
