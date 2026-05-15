@@ -3,7 +3,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { GameCard, Suit, SkillActionType, PlayerRow } from "@/types/game";
 import { countSuits } from "@/lib/game/skillEngine";
-import { ESCALATORS } from "@/lib/game/boardEngine";
+import { ESCALATORS, moveBySteps } from "@/lib/game/boardEngine";
 
 export async function resolveSkillsAndStartSettle(gameId: string, round: number) {
   try {
@@ -154,14 +154,26 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
       await supabase.from("skill_actions").update({ status: "resolved" }).eq("id", action.id);
     }
 
-    // 5. 批次更新玩家狀態
-    // 關鍵修復：只有在卡片真的被技能修改時才更新 cards 欄位，避免覆蓋掉玩家剛抽到的新卡
+    // 5. 執行基礎移動結算 (根據預計步數)
+    for (const p of Array.from(playerMap.values())) {
+      const steps = p.predicted_steps || 0;
+      if (steps > 0 || p.position === 100) {
+        // 使用 moveBySteps 確保反彈與機關邏輯正確 (不傳入 modifiers 因為 passiveMod 已經算在 predicted_steps 裡了)
+        const { position: nextPos, starsGained } = moveBySteps(p.position, steps, {});
+        p.position = nextPos;
+        p.stars += starsGained;
+      }
+    }
+
+    // 6. 批次更新玩家狀態
     for (const p of Array.from(playerMap.values())) {
       const originalPlayer = players.find(op => op.id === p.id);
       const cardsModified = JSON.stringify(p.cards) !== JSON.stringify(originalPlayer?.cards);
       
       const updatePayload: Partial<PlayerRow> = { 
         position: p.position,
+        stars: p.stars,
+        predicted_steps: 0 // 結算後重置
       };
       
       if (cardsModified) {

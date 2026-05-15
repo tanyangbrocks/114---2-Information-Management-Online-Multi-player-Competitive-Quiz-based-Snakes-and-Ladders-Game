@@ -33,31 +33,38 @@ export function HostGameClient({ params }: Props) {
   const [selectedGiftPlayerId, setSelectedGiftPlayerId] = useState<string>("");
   const [giftCounts, setGiftCounts] = useState<Record<Suit, number>>({ S: 0, C: 0, D: 0, H: 0 });
 
-  // 在進入 settle 時快照各玩家的舊位置，用於後續比對是否已移動
-  const settleBaselineRef = useRef<Map<string, number>>(new Map());
+  const [movedPlayerIds, setMovedPlayerIds] = useState<Set<string>>(new Set());
 
+  // 監聽玩家動畫完成訊號
+  const { onMoveDone } = useGameRealtime(gameId);
+  useEffect(() => {
+    onMoveDone((payload) => {
+      setMovedPlayerIds(prev => new Set(prev).add(payload.playerId));
+    });
+  }, [onMoveDone]);
+
+  // 在進入 settle 時重置狀態，並自動處理機器人
   useEffect(() => {
     if (game?.phase === "settle") {
-      // 進入 settle 時，若快照為空則建立
-      if (settleBaselineRef.current.size === 0) {
-        const baseline = new Map<string, number>();
-        players.forEach((p) => baseline.set(p.id, p.position));
-        settleBaselineRef.current = baseline;
-      }
-    } else {
-      // 離開 settle 時清空快照
-      settleBaselineRef.current = new Map();
+      setMovedPlayerIds(new Set());
+      // 機器人自動標記為完成 (模擬 1.5 秒動畫)
+      const timer = setTimeout(() => {
+        setMovedPlayerIds(prev => {
+          const next = new Set(prev);
+          players.forEach(p => {
+            if (p.name.startsWith("[Bot]")) next.add(p.id);
+          });
+          return next;
+        });
+      }, 1500);
+      return () => clearTimeout(timer);
     }
   }, [game?.phase, players]);
 
-  // 判斷玩家是否已完成移動
+  // 判斷玩家是否已完成動畫
   const isPlayerMoved = (p: typeof players[number]) => {
     if (!game || game.phase !== "settle") return false;
-    const card = p.cards.find((c) => c.round === game.current_round);
-    if (!card) return false;
-    if (card.points === 0) return true; // 移動0格，位置不變但已結算
-    const baseline = settleBaselineRef.current.get(p.id);
-    return baseline !== undefined && p.position !== baseline;
+    return movedPlayerIds.has(p.id);
   };
 
 

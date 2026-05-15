@@ -1,3 +1,4 @@
+import { GameCard } from "@/types/game";
 /**
  * 10x10 蛇梯棋：手扶梯（向上）、電鰻（向下）。
  * 數字 1 在左下角，之字形向上至 100。
@@ -71,31 +72,46 @@ export type MoveModifiers = {
   ignoreEel?: boolean;
 };
 
+export function calculatePassiveModifier(cards: GameCard[]): number {
+  const available = cards.filter(c => !c.is_used);
+  let s = 0;
+  let c = 0;
+  available.forEach(card => {
+    if (card.suit === "S") s++;
+    if (card.suit === "C") c++;
+  });
+  return s - c;
+}
+
+export function getTotalSteps(baseSteps: number, modifiers: MoveModifiers = {}): number {
+  const s = modifiers.spades ?? 0;
+  const c = modifiers.clubs ?? 0;
+  return baseSteps + s - c;
+}
+
 /**
  * 從 pos 前進 steps 格，加上黑桃(spades)減去梅花(clubs)，套用反彈、手扶梯／電鰻；若最終落在 100 則星星+1並回到 1。
  */
 export function moveBySteps(pos: number, baseSteps: number, modifiers: MoveModifiers = {}): MoveResult {
-  const s = modifiers.spades ?? 0;
-  const c = modifiers.clubs ?? 0;
-  const netSteps = baseSteps + s - c;
+  const netSteps = getTotalSteps(baseSteps, modifiers);
   
   let p = bounceOverHundred(pos + netSteps);
   // 防止後退到 1 以下
   if (p < 1) p = 1;
   
-  const path: number[] = [p];
-  const chained = applyConnectors(p, modifiers.ignoreEel);
-  p = chained.position;
-  path.push(...chained.path.slice(1));
-
+  const { position: endPos, path: connectorPath } = applyConnectors(p, modifiers.ignoreEel);
+  
   let starsGained = 0;
-  if (p === 100) {
+  let finalPos = endPos;
+  const path: number[] = [p, ...connectorPath.slice(1)];
+
+  if (finalPos === 100) {
     starsGained = 1;
-    p = 1;
-    path.push(100, 1);
+    finalPos = 1;
+    path.push(1, 1); // 簡化處理
   }
 
-  return { position: p, starsGained, path };
+  return { position: finalPos, starsGained, path };
 }
 
 /** 產生棋盤顯示順序：索引 0 = 最上列（100 附近），符合「由上往下看」的 UI。 */

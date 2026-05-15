@@ -175,34 +175,31 @@ function PlayerToken({
       const from = lastPosRef.current;
       const to = targetPos;
       
-      // 1. 計算「走步」路徑：逐格移動
       const steppingPath: number[] = [];
-      if (from !== to) {
-        // 我們根據 from 和 to 的關係來推算中間經過的格子
-        // 考慮 100 點回彈邏輯
-        let p = from;
-        const maxSteps = 20; // 安全閥
-        let count = 0;
-        
-        // 決定方向：如果 to > from 則向前走，否則向後走 (處理回彈)
-        const direction = (to > from) ? 1 : -1;
-        
-        while (p !== to && count < maxSteps) {
-          const next = bounceOverHundred(p + direction);
-          steppingPath.push(next);
-          p = next;
-          count++;
-          // 只有當「這格機關的終點」剛好就是我們的「最終目的地」時，才在這裡中斷走步並轉入傳送
-          const { position } = applyConnectors(p);
-          if (position === to && p !== to) break;
+      const connectorPaths: number[][] = [];
+      
+      let p = from;
+      const maxSteps = 50; 
+      let count = 0;
+
+      // 模擬從起點到終點的全路徑
+      const direction = to > from ? 1 : -1;
+      while (p !== to && count < maxSteps) {
+        count++;
+        const next = bounceOverHundred(p + direction);
+        steppingPath.push(next);
+        p = next;
+
+        // 只有當「這格機關的終點」剛好就是我們的「最終目的地」時，才在這裡中斷走步並轉入傳送
+        const { position } = applyConnectors(p);
+        if (position === to && p !== to) {
+          connectorPaths.push(applyConnectors(p).path);
+          p = position;
+          break;
         }
       }
 
-      // 2. 計算「傳送」路徑 (電梯/電鰻)
-      const lastStep = steppingPath.length > 0 ? steppingPath[steppingPath.length - 1] : from;
-      const { path: connectorPath } = applyConnectors(lastStep);
-      
-      // 3. 執行「走步」動畫：總共固定 1 秒
+      // 執行「走步」動畫：總共 1 秒
       if (steppingPath.length > 0) {
         const durationPerStep = 1 / steppingPath.length;
         for (const cell of steppingPath) {
@@ -215,16 +212,19 @@ function PlayerToken({
         }
       }
 
-      // 4. 執行「傳送」動畫：總共固定 1 秒
-      if (connectorPath.length > 1) {
-        const durationPerSegment = 1 / (connectorPath.length - 1);
-        for (let i = 1; i < connectorPath.length; i++) {
-          const coords = getCellCoords(connectorPath[i]);
-          await controls.start({
-            left: `${coords.x}%`,
-            top: `${coords.y}%`,
-            transition: { duration: durationPerSegment, ease: "easeInOut" }
-          });
+      // 執行「傳送」動畫：總共 1 秒 (不論有多少段)
+      if (connectorPaths.length > 0) {
+        const totalSegments = connectorPaths.reduce((acc, path) => acc + (path.length - 1), 0);
+        const durationPerSegment = 1 / totalSegments;
+        for (const path of connectorPaths) {
+          for (let i = 1; i < path.length; i++) {
+            const coords = getCellCoords(path[i]);
+            await controls.start({
+              left: `${coords.x}%`,
+              top: `${coords.y}%`,
+              transition: { duration: durationPerSegment, ease: "easeInOut" }
+            });
+          }
         }
       }
 
@@ -232,7 +232,7 @@ function PlayerToken({
       isMovingRef.current = false;
       onMoveComplete?.();
     }
-  }, [player.position, phase, controls, manualTarget, onMoveComplete, player.predicted_steps]);
+  }, [phase, player.position, manualTarget, controls, onMoveComplete]);
 
   // 初始渲染位置
   // 初始渲染位置：在結算階段鎖定在移動前的位置，避免因資料更新導致瞬移

@@ -193,16 +193,29 @@ export function PlayClient({ params }: Props) {
     return hasNonS2;
   }, [self, skillActions, hasActedSkillState]);
 
-  const { passiveModifier, suitCounts } = useMemo(() => {
-    if (!self || !game) return { passiveModifier: 0, suitCounts: { S: 0, C: 0, D: 0, H: 0 } };
+  const { passiveModifier, suitCounts, dynamicTotalSteps } = useMemo(() => {
+    if (!self || !game) return { passiveModifier: 0, suitCounts: { S: 0, C: 0, D: 0, H: 0 }, dynamicTotalSteps: 0 };
     const available = getAvailableCards(self.cards);
     const counts = countSuits(available);
     const modifier = counts.S - counts.C;
+    
+    const currentRoundCard = self.cards.find(c => c.round === game.current_round);
+    const baseSteps = currentRoundCard?.points || 0;
+    
     return { 
       passiveModifier: modifier, 
-      suitCounts: counts
+      suitCounts: counts,
+      dynamicTotalSteps: Math.max(0, baseSteps + modifier)
     };
   }, [self, game]);
+
+  // 自動同步預計步數到資料庫，讓主辦方也能看見
+  useEffect(() => {
+    if (!self || !game || game.phase === "lobby") return;
+    if (self.predicted_steps !== dynamicTotalSteps) {
+      void supabase.from("players").update({ predicted_steps: dynamicTotalSteps }).eq("id", self.id);
+    }
+  }, [dynamicTotalSteps, self, game, supabase]);
 
   const availableSkills = useMemo(() => {
     if (!self) return [];
@@ -429,7 +442,7 @@ export function PlayClient({ params }: Props) {
   const isShowingReveal = game.phase === "reveal";
   const isSkillPhase = game.phase === "skill";
   const isWaitingSettle = game.phase === "settle" && 
-                          !self.cards.find(c => c.round === game.current_round)?.is_used && 
+                          self.cards.some(c => c.round === game.current_round) && 
                           !localMoveTarget &&
                           settledRoundRef.current !== game.current_round;
   const isCounterPhase = !!pendingCounter || !!snakeTarget;
@@ -745,11 +758,15 @@ export function PlayClient({ params }: Props) {
             <div className="flex gap-10">
               <div><p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">位置</p><p className="text-2xl font-black tracking-tighter">{self.position}</p></div>
               <div><p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">星星</p><p className="text-2xl font-black text-milky-accent tracking-tighter">★ {self.stars}</p></div>
-              <div className="flex flex-col items-end">
-                <p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">步數加乘</p>
-                <p className={`text-2xl font-black tracking-tighter ${passiveModifier >= 0 ? 'text-milky-brown' : 'text-milky-brown/60'}`}>
-                  {passiveModifier > 0 ? `+${passiveModifier}` : passiveModifier}
-                </p>
+              <div className="flex flex-wrap gap-2">
+                <div className="rounded-xl bg-milky-apricot/20 px-3 py-1.5 border border-milky-apricot/30">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-milky-brown/40">Expected Move</p>
+                  <p className="text-sm font-black text-milky-brown">🚀 {dynamicTotalSteps} 步</p>
+                </div>
+                <div className="rounded-xl bg-milky-accent/10 px-3 py-1.5 border border-milky-accent/20">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-milky-accent/60">Passive Mod</p>
+                  <p className="text-sm font-black text-milky-accent">{passiveModifier > 0 ? `+${passiveModifier}` : passiveModifier} 步</p>
+                </div>
               </div>
             </div>
             <div className="ml-auto"><div className="bg-milky-beige/20 px-6 py-3 rounded-[1.5rem] border border-milky-beige/50 shadow-inner text-xs font-black text-milky-brown/50 uppercase tracking-[0.3em]">Round {game.current_round} / {game.round_count}</div></div>
@@ -778,10 +795,11 @@ export function PlayClient({ params }: Props) {
           phase={game.phase}
           manualTarget={localMoveTarget?.pos}
           onMoveComplete={() => {
-            if (localMoveTarget && settledRoundRef.current !== game.current_round) {
+            if (game.phase === "settle" && settledRoundRef.current !== game.current_round) {
               settledRoundRef.current = game.current_round;
-              void performMove(localMoveTarget.pos, localMoveTarget.stars);
-              setLocalMoveTarget(null);
+              void reload();
+              void sendSignal();
+              void sendMoveDone(self.id, self.name, self.position);
             }
           }}
           onPlayerClick={(targetId) => {
