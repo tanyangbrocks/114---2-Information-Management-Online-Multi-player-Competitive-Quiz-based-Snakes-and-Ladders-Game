@@ -516,7 +516,7 @@ export function HostGameClient({ params }: Props) {
           </div>
           <ol className="grid gap-4 sm:grid-cols-3">
             {top.map((p, idx) => (
-              <MotionWrapper type="bounce" delay={idx * 0.1} key={p.id} className="pudding-card !bg-white/80 !p-5 relative overflow-hidden group">
+              <MotionWrapper type="fade" delay={idx * 0.1} key={p.id} className="pudding-card !bg-white/80 !p-5 relative overflow-hidden group">
                 <div className={`absolute top-0 right-0 px-4 py-1 rounded-bl-2xl font-black text-xs text-white ${idx === 0 ? 'bg-milky-apricot' : idx === 1 ? 'bg-milky-accent' : 'bg-milky-brown/40'}`}>
                    RANK {idx + 1}
                 </div>
@@ -541,7 +541,7 @@ export function HostGameClient({ params }: Props) {
       <AnimatePresence>
         {isGiftModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-milky-brown/60 p-4 backdrop-blur-sm">
-            <MotionWrapper type="bounce" className="w-full max-w-md">
+            <MotionWrapper type="fade" className="w-full max-w-md">
               <div className="pudding-card bg-white shadow-2xl border-4 border-milky-apricot relative">
                 <button 
                   onClick={() => setIsGiftModalOpen(false)}

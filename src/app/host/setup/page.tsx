@@ -80,7 +80,7 @@ export default function HostSetupPage() {
         </p>
       </div>
 
-      <MotionWrapper type="bounce">
+      <MotionWrapper type="fade">
         <form onSubmit={onSubmit} className="pudding-card border-2 space-y-8 p-8 shadow-xl">
           <label className="block space-y-3">
             <span className="text-sm font-black text-milky-brown/80 ml-1">冒險回合總數 (1–20)</span>
