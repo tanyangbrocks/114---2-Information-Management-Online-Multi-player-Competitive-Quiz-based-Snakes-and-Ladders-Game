@@ -157,8 +157,8 @@ export function PlayClient({ params }: Props) {
               setTimeout(() => setAnswerFeedback(null), 1500);
             });
         } else {
-          // 未作答處理：自動抽錯題卡
-          const card = drawForSlot(game.current_round, false);
+          // 未作答處理：自動抽錯題卡 (Slot 1)
+          const card = drawForSlot(1, game.current_round);
           const newCards = [...self.cards, card];
           void supabase
             .from("players")
@@ -188,23 +188,18 @@ export function PlayClient({ params }: Props) {
     if (!self || !skillActions) return false;
     const myActions = skillActions.filter(a => a.player_id === self.id);
     if (myActions.length === 0) return false;
-    const lastAction = myActions[myActions.length - 1];
-    if (lastAction.action_type === "S-2" && lastAction.status === "resolved" && myActions.length < 2) {
-      return false;
-    }
-    return true;
+    // 只要放過任何「非 S-2」的技能，或者 S-2 被攔截，就結束本回合技能權限
+    const hasNonS2 = myActions.some(a => a.action_type !== "S-2" && a.status === "resolved");
+    return hasNonS2;
   }, [self, skillActions, hasActedSkillState]);
 
-  const { passiveModifier, predictedSteps, suitCounts } = useMemo(() => {
-    if (!self || !game) return { passiveModifier: 0, predictedSteps: 0, suitCounts: { S: 0, C: 0, D: 0, H: 0 } };
+  const { passiveModifier, suitCounts } = useMemo(() => {
+    if (!self || !game) return { passiveModifier: 0, suitCounts: { S: 0, C: 0, D: 0, H: 0 } };
     const available = getAvailableCards(self.cards);
     const counts = countSuits(available);
     const modifier = counts.S - counts.C;
-    const currentRoundCard = self.cards.find(c => c.round === game.current_round);
-    const baseSteps = currentRoundCard?.points || 0;
     return { 
       passiveModifier: modifier, 
-      predictedSteps: Math.max(0, baseSteps + modifier),
       suitCounts: counts
     };
   }, [self, game]);
@@ -308,11 +303,11 @@ export function PlayClient({ params }: Props) {
   }, [self, game, supabase, reload, sendMoveDone, sendSignal]);
 
   const handleCastSkill = async (skill: AvailableSkill) => {
-    if (!game || !self) return;
+    if (!game || !self || hasActedSkill) return;
     setSkillBusy(true);
     try {
       let consumed: string[] = [];
-      const availableCards = getAvailableCards(self.cards);
+      const availableCards = getAvailableCards(self.cards).sort((a, b) => (a.round || 0) - (b.round || 0));
       const counts = countSuits(availableCards);
       
       if (skill.actionType === "U-3") {
