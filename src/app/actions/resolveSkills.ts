@@ -158,8 +158,7 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
     for (const p of Array.from(playerMap.values())) {
       await supabase.from("players").update({ 
         position: p.position, 
-        cards: p.cards,
-        predicted_steps: 0 
+        cards: p.cards
       }).eq("id", p.id);
     }
 

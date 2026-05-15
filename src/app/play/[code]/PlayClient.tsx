@@ -113,6 +113,7 @@ export function PlayClient({ params }: Props) {
   };
 
   useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
     if (game?.phase === "reveal" && self && gameId) {
       const alreadyDrawn = self.cards.some((c) => c.round === game.current_round);
       if (!alreadyDrawn) {
@@ -125,7 +126,7 @@ export function PlayClient({ params }: Props) {
 
         const isCorrect = cfg.answer === choice;
         setAnswerFeedback(isCorrect ? "O" : "X");
-        setTimeout(() => setAnswerFeedback(null), 1500);
+        timer = setTimeout(() => setAnswerFeedback(null), 1500);
 
         const card = drawForSlot(isCorrect ? 2 : 1, game.current_round);
         const newCards = [...self.cards, card];
@@ -140,6 +141,9 @@ export function PlayClient({ params }: Props) {
           });
       }
     }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [game?.phase, game?.current_round, game?.rounds_config, self, gameId, drawForSlot, reload, sendSignal, supabase]);
 
   const settledRoundRef = useRef<number>(-1);
@@ -235,8 +239,15 @@ export function PlayClient({ params }: Props) {
     setPendingCounter(null);
     setSnakeTarget(null);
     setHasActedSkillState(false);
-    setIsDrawerOpen(true);
   }, [game?.current_round]);
+
+  useEffect(() => {
+    if (game?.phase === "skill" && !hasActedSkill) {
+      setIsDrawerOpen(true);
+    } else {
+      setIsDrawerOpen(false);
+    }
+  }, [game?.phase, hasActedSkill]);
 
   const [pendingCounter, setPendingCounter] = useState<{ id: string, action_type: string } | null>(null);
   const [snakeTarget, setSnakeTarget] = useState<{ position: number, starsGained: number, cards: GameCard[] } | null>(null);
@@ -277,7 +288,7 @@ export function PlayClient({ params }: Props) {
     }
   }, [self, game, supabase, reload, sendMoveDone, sendSignal]);
 
-  const settledRoundRef = useRef<number>(-1);
+
 
   useEffect(() => {
     if (game?.phase === "settle" && self && gameId) {

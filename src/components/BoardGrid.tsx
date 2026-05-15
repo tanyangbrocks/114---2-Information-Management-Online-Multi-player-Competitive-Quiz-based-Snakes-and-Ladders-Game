@@ -201,7 +201,7 @@ function PlayerToken({
         top: `${initialCoords.y}%`
       }}
       className={cn(
-        "absolute h-[10%] w-[10%] flex items-center justify-center transition-all",
+        "absolute h-[10%] w-[10%] flex items-center justify-center",
         isTargetable ? "pointer-events-auto cursor-pointer scale-110 z-[60]" : "pointer-events-none"
       )}
       style={{ 
@@ -213,8 +213,8 @@ function PlayerToken({
     >
       <div
         className={cn(
-          "h-5 w-5 sm:h-6 sm:w-6 rounded-full border-2 border-white shadow-xl transition-all",
-          isSelf ? "bg-[#5D4037] ring-4 ring-white/50 scale-125 z-50" : "bg-white",
+          "h-5 w-5 sm:h-6 sm:w-6 rounded-full border-2 border-white shadow-xl transition-transform",
+          isSelf ? "bg-milky-brown ring-4 ring-white/50 scale-125 z-50" : "bg-white",
           isTargetable && "ring-4 ring-milky-accent animate-pulse bg-milky-accent/20"
         )}
       >

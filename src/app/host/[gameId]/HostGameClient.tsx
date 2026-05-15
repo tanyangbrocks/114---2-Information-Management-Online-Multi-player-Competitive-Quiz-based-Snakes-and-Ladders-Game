@@ -179,6 +179,10 @@ export function HostGameClient({ params }: Props) {
         .eq("id", game.id);
 
       if (upErr) throw upErr;
+
+      // 清除所有玩家的預測步數，為下一輪做準備
+      await supabase.from("players").update({ predicted_steps: 0 }).eq("game_id", game.id);
+
       await reload();
       await sendSignal();
     } catch (e) {
