@@ -63,6 +63,8 @@ export async function castSkill(
     });
 
     // 如果是 S-2，直接將玩家選擇的新牌加入手牌
+    const fromU3Id = metadata?.from_u3_action_id as string | undefined;
+
     if (actionType === "S-2" && metadata?.s2_suit && metadata?.s2_points) {
       updatedCards.push({
         id: `S2-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
@@ -74,15 +76,42 @@ export async function castSkill(
         slot: 2,
         is_used: false
       });
+
+      // 先更新玩家手牌
+      const { error: cardUpdateErr } = await supabase.from("players").update({ cards: updatedCards }).eq("id", playerId);
+      if (cardUpdateErr) return { success: false, error: "更新卡牌狀態失敗: " + cardUpdateErr.message };
+
+      if (fromU3Id) {
+        // U-3 觸發的 S-2：把原本 waiting_choice 的 U-3 動作標為已結算
+        await supabase.from("skill_actions").update({
+          status: "resolved",
+          metadata: { ...metadata, resolved_by_choice: true }
+        }).eq("id", fromU3Id);
+      } else {
+        // 正常主動施放 S-2：插入一筆 resolved 紀錄
+        const { error: insertErr } = await supabase.from("skill_actions").insert({
+          game_id: gameId,
+          round,
+          player_id: playerId,
+          action_type: "S-2",
+          consumed_cards: consumedCards,
+          status: "resolved",
+          metadata
+        });
+        if (insertErr) {
+          await supabase.from("players").update({ cards }).eq("id", playerId);
+          return { success: false, error: "寫入技能動作失敗: " + insertErr.message };
+        }
+      }
+      return { success: true };
     }
 
-    // 4. 更新
+    // 4. 非 S-2 技能：更新卡牌後插入 pending 紀錄
     if (consumedCards.length > 0) {
       const { error: updateErr } = await supabase
         .from("players")
         .update({ cards: updatedCards })
         .eq("id", playerId);
-
       if (updateErr) return { success: false, error: "更新卡牌狀態失敗: " + updateErr.message };
     }
 
@@ -94,11 +123,11 @@ export async function castSkill(
       target_player_id: targetPlayerId || null,
       consumed_cards: consumedCards,
       metadata: metadata || {},
-      status: actionType === "S-2" ? "resolved" : "pending"
+      status: "pending"
     });
 
     if (insertErr) {
-      // 如果是因為 metadata 欄位不存在 (schema cache 錯誤)，嘗試不帶 metadata 再次寫入
+      // 補償：嘗試不帶 metadata 再寫一次
       if (insertErr.message.toLowerCase().includes("metadata")) {
         const { error: retryErr } = await supabase.from("skill_actions").insert({
           game_id: gameId,
@@ -107,14 +136,12 @@ export async function castSkill(
           action_type: actionType,
           target_player_id: targetPlayerId || null,
           consumed_cards: consumedCards,
-          status: actionType === "S-2" ? "resolved" : "pending"
+          status: "pending"
         });
         if (!retryErr) return { success: true };
         await supabase.from("players").update({ cards }).eq("id", playerId);
         return { success: false, error: "寫入技能動作失敗: " + retryErr.message };
       }
-
-      // 補償機制：嘗試還原卡片
       await supabase.from("players").update({ cards }).eq("id", playerId);
       return { success: false, error: "寫入技能動作失敗: " + insertErr.message };
     }

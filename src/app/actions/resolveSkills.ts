@@ -64,18 +64,18 @@ export async function resolveNextSkill(gameId: string, round: number) {
     await executeSkillEffect(supabase, action, players, round);
     await supabase.from("skill_actions").update({ status: "resolved" }).eq("id", action.id);
 
-    // 5. 重要：更新發動者的預計步數 (因為可能消耗了 S 或 C 牌)
+    // 5. 更新發動者的預計步數 (S/C 牌消耗後重算)
     if (caster) {
-      const { data: updatedCaster } = await supabase.from("players").select("*").eq("id", caster.id).single();
+      const { data: updatedCaster } = await supabase.from("players").select("cards").eq("id", caster.id).single();
       if (updatedCaster) {
         const cards = updatedCaster.cards as GameCard[];
         const activeCards = cards.filter(c => !c.is_used);
         const suits = countSuits(activeCards);
-        const roundCard = cards.find(c => c.round === round);
-        if (roundCard) {
-          const newPredicted = Math.max(0, roundCard.points + suits.S - suits.C);
-          await supabase.from("players").update({ predicted_steps: newPredicted }).eq("id", caster.id);
-        }
+        // 累加本回合所有未消耗的卡片 (支援 S-2 多牌疊加)
+        const roundCards = cards.filter(c => c.round === round && !c.is_used);
+        const basePoints = roundCards.reduce((acc, c) => acc + c.points, 0);
+        const newPredicted = Math.max(0, basePoints + suits.S - suits.C);
+        await supabase.from("players").update({ predicted_steps: newPredicted }).eq("id", caster.id);
       }
     }
 
@@ -165,15 +165,12 @@ async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction,
           await supabase.from("players").update({ cards: updatedCards }).eq("id", actualTarget.id);
         }
       }
+      // S-2 是瞬發技能，由玩家在客戶端處理，伺服器端此處不再重複執行
+      // (action.status 應已為 'resolved'，不會進入此函式)
     } else if (randomEffect === "S-2") {
-      const currentCards = player.cards as GameCard[];
-      const roundCardIdx = currentCards.findIndex(c => c.round === round);
-      if (roundCardIdx !== -1) {
-        const oldCard = currentCards[roundCardIdx];
-        const newCards = [...currentCards];
-        newCards[roundCardIdx] = drawServerCard(oldCard.slot, round);
-        await supabase.from("players").update({ cards: newCards }).eq("id", player.id);
-      }
+      // U-3 抽到 S-2：設為 waiting_choice，讓玩家端彈出選牌視窗
+      // 注意：此函式在 resolveNextSkill 路徑中不處理 U-3 S-2，
+      // 該邏輯直接在 resolveSkillsAndStartSettle 的迴圈中以 continue 跳過
     } else if (randomEffect === "C-1") {
       const nextPos = Math.min(100, player.position + 3);
       await supabase.from("players").update({ position: nextPos }).eq("id", player.id);
@@ -268,12 +265,12 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
 
       // C-1: 自身前進或後退
       if (action.action_type === "C-1") {
-        const dir = action.metadata?.direction || 1;
+        const dir = Number(action.metadata?.direction ?? 1);
         caster.position = Math.max(1, Math.min(100, caster.position + dir));
       }
       // C-2: 指定目標前進或後退
       if (action.action_type === "C-2" && target) {
-        const dir = action.metadata?.direction || -1;
+        const dir = Number(action.metadata?.direction ?? -1);
         target.position = Math.max(1, Math.min(100, target.position + dir));
       }
       // H-1: 自由前進
@@ -281,15 +278,10 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
         const r = rankMap.get(caster.id) || 1;
         caster.position = Math.min(100, caster.position + r);
       }
-      // S-2: 命運重啟
+      // S-2: 由玩家端瞬發，批次仲裁中如出現應已是 resolved，直接略過
+      // (已消耗卡片在 castSkill 中處理，不在此重複執行)
       if (action.action_type === "S-2") {
-        const currentCards = caster.cards as GameCard[];
-        const roundCardIdx = currentCards.findIndex(c => c.round === round);
-        if (roundCardIdx !== -1) {
-          const oldCard = currentCards[roundCardIdx];
-          currentCards[roundCardIdx] = drawServerCard(oldCard.slot, round);
-          caster.cards = currentCards;
-        }
+        // no-op: resolved S-2 handled client-side
       }
       // U-1: 磁力傳送
       if (action.action_type === "U-1") {
@@ -318,13 +310,13 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
             }
           }
         } else if (randomEffect === "S-2") {
-          const currentCards = caster.cards as GameCard[];
-          const roundCardIdx = currentCards.findIndex(c => c.round === round);
-          if (roundCardIdx !== -1) {
-            const oldCard = currentCards[roundCardIdx];
-            currentCards[roundCardIdx] = drawServerCard(oldCard.slot, round);
-            caster.cards = currentCards;
-          }
+          // U-3 抽到 S-2：不直接執行，設為 waiting_choice 使玩家選牌
+          await supabase.from("skill_actions").update({
+            status: "waiting_choice",
+            metadata: { ...action.metadata, triggered_s2: true, random_effect: "S-2" }
+          }).eq("id", action.id);
+          // 跳過此動作的 resolved 更新
+          continue;
         } else if (randomEffect === "C-1") {
           caster.position = Math.min(100, caster.position + 3);
         } else if (randomEffect === "H-1") {

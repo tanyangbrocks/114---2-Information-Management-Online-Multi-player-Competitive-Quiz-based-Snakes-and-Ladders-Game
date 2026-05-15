@@ -146,7 +146,7 @@ export function PlayClient({ params }: Props) {
 
     lastFeedbackRoundRef.current = game.current_round;
     setAnswerFeedback(isCorrect ? "O" : "X");
-    
+
     // 獨立的計時器，不跟著 effect cleanup 連動，確保它一定會執行關閉
     setTimeout(() => {
       setAnswerFeedback((prev) => prev !== null ? null : prev);
@@ -181,14 +181,14 @@ export function PlayClient({ params }: Props) {
           .from("players")
           .update({ cards: newCards, predicted_steps: Math.max(0, predicted) })
           .eq("id", self.id);
-          
+
         isDrawingRef.current = false;
-        
+
         if (error) {
           console.error("Card draw failed:", error);
           return;
         }
-        
+
         void reload();
         void sendSignal();
       } catch (err) {
@@ -196,7 +196,7 @@ export function PlayClient({ params }: Props) {
         isDrawingRef.current = false;
       }
     };
-    
+
     void performDraw();
   }, [game?.phase, game?.current_round, game?.rounds_config, self, gameId, drawForSlot, reload, sendSignal, supabase]);
 
@@ -321,6 +321,7 @@ export function PlayClient({ params }: Props) {
     isOpen: boolean;
     suit: "S" | "C" | "H" | "D" | null;
     points: number | null;
+    triggeredByActionId?: string;
   }>({ isOpen: false, suit: null, points: null });
 
   useEffect(() => {
@@ -449,22 +450,39 @@ export function PlayClient({ params }: Props) {
 
   const handleConfirmS2 = async () => {
     if (!game || !self) return;
-    const { suit, points } = s2Selection;
+    const { suit, points, triggeredByActionId } = s2Selection;
     if (!suit || !points) return;
 
     setSkillBusy(true);
     setS2Selection({ isOpen: false, suit: null, points: null });
     try {
       let consumed: string[] = [];
-      const availableCards = getAvailableCards(self.cards).sort((a, b) => (a.round || 0) - (b.round || 0));
-      const matching = availableCards.filter(c => c.suit === "S").slice(0, 2);
-      consumed = matching.map(c => c.id);
-      if (consumed.length < 2) {
-        const dCard = availableCards.find(c => c.suit === "D" && !consumed.includes(c.id));
-        if (dCard) consumed.push(dCard.id);
-      }
 
-      const res = await castSkill(game.id, game.current_round, self.id, "S-2", consumed, undefined, { s2_suit: suit, s2_points: points });
+      if (!triggeredByActionId) {
+        // 正常主動施放 S-2：計算要消耗的黑桃/菱形卡
+        const availableCards = getAvailableCards(self.cards).sort((a, b) => (a.round || 0) - (b.round || 0));
+        const matching = availableCards.filter(c => c.suit === "S").slice(0, 2);
+        consumed = matching.map(c => c.id);
+        if (consumed.length < 2) {
+          const dCard = availableCards.find(c => c.suit === "D" && !consumed.includes(c.id));
+          if (dCard) consumed.push(dCard.id);
+        }
+      }
+      // U-3 觸發的 S-2 不需要消耗任何卡片
+
+      const res = await castSkill(
+        game.id,
+        game.current_round,
+        self.id,
+        "S-2",
+        consumed,
+        undefined,
+        {
+          s2_suit: suit,
+          s2_points: points,
+          ...(triggeredByActionId ? { from_u3_action_id: triggeredByActionId } : {})
+        }
+      );
       if (res.success) {
         setSkillPreview(null);
         setSkillStage("idle");
@@ -941,9 +959,19 @@ export function PlayClient({ params }: Props) {
       {s2Selection.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm space-y-6">
-            <h3 className="text-2xl font-black text-milky-brown text-center">命運重啟</h3>
-            <p className="text-sm font-bold text-milky-brown/60 text-center">選擇一張卡牌加入本回合的移動步數</p>
-            
+            {s2Selection.triggeredByActionId ? (
+              <div className="text-center space-y-1">
+                <p className="text-xs font-black text-milky-accent uppercase tracking-widest">終極狂熱觸發！</p>
+                <h3 className="text-2xl font-black text-milky-brown">命運重啟</h3>
+                <p className="text-sm font-bold text-milky-brown/60">U-3 為您隨機抽到了這個能力！<br/>免費選一張牌加入步數，無需消耗資源</p>
+              </div>
+            ) : (
+              <>
+                <h3 className="text-2xl font-black text-milky-brown text-center">命運重啟</h3>
+                <p className="text-sm font-bold text-milky-brown/60 text-center">選擇一張卡牌加入本回合的移動步數</p>
+              </>
+            )}
+
             <div className="space-y-3">
               <p className="text-sm font-bold text-milky-brown">1. 選擇花色</p>
               <div className="grid grid-cols-4 gap-2">
@@ -969,13 +997,15 @@ export function PlayClient({ params }: Props) {
             </div>
 
             <div className="flex gap-3 pt-2">
-              <button onClick={() => setS2Selection({ isOpen: false, suit: null, points: null })} className="flex-1 py-3 rounded-xl font-bold text-milky-brown bg-milky-beige/50 hover:bg-milky-beige transition-colors">取消</button>
-              <button 
+              {!s2Selection.triggeredByActionId && (
+                <button onClick={() => setS2Selection({ isOpen: false, suit: null, points: null })} className="flex-1 py-3 rounded-xl font-bold text-milky-brown bg-milky-beige/50 hover:bg-milky-beige transition-colors">取消</button>
+              )}
+              <button
                 disabled={!s2Selection.suit || !s2Selection.points}
-                onClick={handleConfirmS2} 
+                onClick={handleConfirmS2}
                 className="flex-[2] py-3 rounded-xl font-bold text-white bg-milky-accent disabled:opacity-50 disabled:cursor-not-allowed hover:bg-milky-accent/90 transition-colors shadow-lg"
               >
-                確認施放
+                {s2Selection.triggeredByActionId ? "✨ 免費確認" : "確認施放"}
               </button>
             </div>
           </div>
