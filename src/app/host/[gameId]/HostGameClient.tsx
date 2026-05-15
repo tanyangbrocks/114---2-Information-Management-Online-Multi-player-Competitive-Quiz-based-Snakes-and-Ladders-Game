@@ -5,14 +5,12 @@ import { QRInvitePanel } from "@/components/QRInvitePanel";
 import { createClient } from "@/lib/supabase/browser";
 import { rankPlayers } from "@/lib/game/ranking";
 import { useGameRealtime } from "@/hooks/useGameRealtime";
-import { resolveSkillsAndStartSettle, startSkillResolution, resolveNextSkill } from "@/app/actions/resolveSkills";
+import { resolveSkillsAndStartSettle, resolveNextSkill } from "@/app/actions/resolveSkills";
 import { useMemo, useState, useEffect, useRef, use } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence } from "framer-motion";
 import { Loader2, Radio, SkipForward, Trophy, Sparkles, LayoutDashboard, Gift, Plus, Minus, X, UserPlus, CheckCircle2 } from "lucide-react";
 import { giveCardsToPlayer, addBotToGame } from "@/app/actions/hostActions";
-import { moveBySteps } from "@/lib/game/boardEngine";
-import { countSuits } from "@/lib/game/skillEngine";
 import { useCardDraw } from "@/hooks/useCardDraw";
 import { MotionWrapper } from "@/components/MotionWrapper";
 import type { Suit, QuizChoice } from "@/types/game";
@@ -136,20 +134,6 @@ export function HostGameClient({ params }: Props) {
     }
   };
 
-  const startResolution = async () => {
-    if (!game) return;
-    setBusy("next");
-    try {
-      await startSkillResolution(game.id);
-      await reload();
-      await sendSignal();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "啟動仲裁失敗");
-    } finally {
-      setBusy(null);
-    }
-  };
-
   // 序列仲裁處理器
   useEffect(() => {
     if (game?.phase === "skill" && authorized && isArbitrating) {
@@ -176,20 +160,6 @@ export function HostGameClient({ params }: Props) {
     }
   }, [game?.phase, game?.current_round, skillActions, authorized, game?.id, reload, busy, sendSignal, isArbitrating]);
 
-  const [waitingActionId, setWaitingActionId] = useState<string | null>(null);
-  const [waitingTargetName, setWaitingTargetName] = useState<string | null>(null);
-
-  useEffect(() => {
-    const waiting = skillActions.find(a => a.status === "waiting_counter");
-    if (waiting) {
-      setWaitingActionId(waiting.id);
-      const t = players.find(p => p.id === waiting.target_player_id);
-      setWaitingTargetName(t?.name || "玩家");
-    } else {
-      setWaitingActionId(null);
-      setWaitingTargetName(null);
-    }
-  }, [skillActions, players]);
 
   const settleMoves = async () => {
     if (!game) return;
@@ -197,8 +167,6 @@ export function HostGameClient({ params }: Props) {
     try {
       const res = await resolveSkillsAndStartSettle(game.id, game.current_round);
       if (res.success) {
-        setWaitingActionId(null);
-        setWaitingTargetName(null);
         await reload();
         await sendSignal();
       } else {
@@ -344,24 +312,7 @@ export function HostGameClient({ params }: Props) {
           }
         }
 
-        // 4. 結算階段：自動移動
-        if (game.phase === "settle") {
-          const card = bot.cards.find(c => c.round === game.current_round);
-          if (card && !card.is_used) {
-            const suitCounts = countSuits(bot.cards.filter(c => !c.is_used));
-            const move = moveBySteps(bot.position, card.points, {
-               spades: suitCounts.S,
-               clubs: suitCounts.C
-            });
-            const updatedCards = bot.cards.map(c => c.id === card.id ? { ...c, is_used: true } : c);
-            await supabase.from("players").update({
-              position: move.position,
-              stars: bot.stars + move.starsGained,
-              cards: updatedCards
-            }).eq("id", bot.id);
-            botProcessedRef.current.add(actionKey);
-          }
-        }
+
       }
     };
 

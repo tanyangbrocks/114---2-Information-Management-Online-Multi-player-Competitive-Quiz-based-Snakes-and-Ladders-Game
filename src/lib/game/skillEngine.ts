@@ -107,14 +107,14 @@ export function calculateAvailableSkills(cards: GameCard[], otherPlayers: Player
       description: "指定一名玩家，隨機捨棄其一張尚未使用的手牌。"
     });
   }
-  // S-2: 重新抽取該回合手牌
+  // S-2: 自由選擇並獲得一張新牌
   if (canAfford(counts, 2, 0, 0, 0)) {
     skills.push({ 
       actionType: "S-2", 
       requiresTarget: false, 
       costDescription: "2S",
       name: "命運重啟",
-      description: "重新抽取本回合的移動卡片，試著改變你的命運。"
+      description: "自由選擇一張牌（任意花色，1到8點），立刻將其點數加入本回合預計步數，不結束技能回合。"
     });
   }
   // C-1: 自身移動 +1 或 -1

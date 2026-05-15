@@ -141,3 +141,8 @@ export function cellKind(cell: number): "escalator" | "eel" | "plain" {
   if (EELS.some(([from]) => from === cell)) return "eel";
   return "plain";
 }
+
+export function findNearestEscalator(pos: number): readonly [number, number] | null {
+  const future = ESCALATORS.filter(([from]) => from > pos).sort((a, b) => a[0] - b[0]);
+  return future.length > 0 ? future[0] : null;
+}

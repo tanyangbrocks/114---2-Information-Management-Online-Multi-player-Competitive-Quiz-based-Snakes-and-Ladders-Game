@@ -3,8 +3,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { GameCard, Suit, SkillActionType, PlayerRow, SkillAction } from "@/types/game";
 import { countSuits } from "@/lib/game/skillEngine";
-import { ESCALATORS, moveBySteps, bounceOverHundred } from "@/lib/game/boardEngine";
-import { rankPlayers } from "@/lib/game/ranking";
+import { ESCALATORS, moveBySteps } from "@/lib/game/boardEngine";
 
 export async function startSkillResolution(gameId: string) {
   const supabase = createClient(
@@ -62,7 +61,7 @@ export async function resolveNextSkill(gameId: string, round: number) {
     }
 
     // 4. 無反制或不符反制條件，直接執行
-    await executeSkillEffect(supabase, action, players);
+    await executeSkillEffect(supabase, action, players, round);
     await supabase.from("skill_actions").update({ status: "resolved" }).eq("id", action.id);
 
     // 5. 重要：更新發動者的預計步數 (因為可能消耗了 S 或 C 牌)
@@ -87,43 +86,106 @@ export async function resolveNextSkill(gameId: string, round: number) {
   }
 }
 
-async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction, players: PlayerRow[]) {
+async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction, players: PlayerRow[], round: number) {
   const player = players.find(p => p.id === action.player_id);
   const target = players.find(p => p.id === action.target_player_id);
   if (!player) return;
 
+  const getRank = (pid: string) => {
+    const sorted = [...players].sort((a, b) => {
+      if (b.stars !== a.stars) return b.stars - a.stars;
+      return b.position - a.position;
+    });
+    return sorted.findIndex(p => p.id === pid) + 1;
+  };
 
+  if (action.action_type === "S-1" && target) {
+    const tCards = target.cards as GameCard[];
+    const available = tCards.filter(c => !c.is_used);
+    if (available.length > 0) {
+      const dropId = available[Math.floor(Math.random() * available.length)].id;
+      const updatedCards = tCards.map(c => c.id === dropId ? { ...c, is_used: true } : c);
+      await supabase.from("players").update({ cards: updatedCards }).eq("id", target.id);
+    }
+  }
 
-  switch (action.action_type) {
-    case "S-1": // 指定後退 3 步
-      if (target) {
-        const nextPos = Math.max(1, target.position - 3);
-        await supabase.from("players").update({ position: nextPos }).eq("id", target.id);
+  if (action.action_type === "S-2") {
+    const currentCards = player.cards as GameCard[];
+    const roundCardIdx = currentCards.findIndex(c => c.round === round);
+    if (roundCardIdx !== -1) {
+      const oldCard = currentCards[roundCardIdx];
+      const newCards = [...currentCards];
+      newCards[roundCardIdx] = drawServerCard(oldCard.slot, round);
+      await supabase.from("players").update({ cards: newCards }).eq("id", player.id);
+    }
+  }
+
+  if (action.action_type === "C-1") {
+    const dir = (action.metadata?.direction as number) || 1;
+    const nextPos = Math.max(1, Math.min(100, player.position + dir));
+    await supabase.from("players").update({ position: nextPos }).eq("id", player.id);
+  }
+
+  if (action.action_type === "C-2" && target) {
+    const dir = (action.metadata?.direction as number) || -1;
+    const nextPos = Math.max(1, Math.min(100, target.position + dir));
+    await supabase.from("players").update({ position: nextPos }).eq("id", target.id);
+  }
+
+  if (action.action_type === "H-1") {
+    const r = getRank(player.id) || 1;
+    const nextPos = Math.min(100, player.position + r);
+    await supabase.from("players").update({ position: nextPos }).eq("id", player.id);
+  }
+
+  if (action.action_type === "U-1") {
+    const nextLadder = findNearestEscalator(player.position);
+    if (nextLadder) {
+      await supabase.from("players").update({ position: nextLadder[1] }).eq("id", player.id);
+    }
+  }
+
+  if (action.action_type === "U-2" && target) {
+    await supabase.from("players").update({ position: target.position }).eq("id", player.id);
+    await supabase.from("players").update({ position: player.position }).eq("id", target.id);
+  }
+
+  if (action.action_type === "U-3") {
+    const effects: SkillActionType[] = ["S-1", "S-2", "C-1", "H-1", "U-1"];
+    const randomEffect = effects[Math.floor(Math.random() * effects.length)];
+
+    if (randomEffect === "S-1") {
+      const actualTarget = target || players.filter(p => p.id !== player.id)[Math.floor(Math.random() * (players.length - 1))];
+      if (actualTarget) {
+        const tCards = actualTarget.cards as GameCard[];
+        const available = tCards.filter(c => !c.is_used);
+        if (available.length > 0) {
+          const dropId = available[Math.floor(Math.random() * available.length)].id;
+          const updatedCards = tCards.map(c => c.id === dropId ? { ...c, is_used: true } : c);
+          await supabase.from("players").update({ cards: updatedCards }).eq("id", actualTarget.id);
+        }
       }
-      break;
-    case "S-2": // 抽 1 張牌
-      // 這裡假設 S-2 已經在 PlayClient 抽過了，如果沒抽，這裡要補
-      break;
-    case "D-1": // 目標星星 -1
-      if (target) {
-        await supabase.from("players").update({ stars: Math.max(0, target.stars - 1) }).eq("id", target.id);
+    } else if (randomEffect === "S-2") {
+      const currentCards = player.cards as GameCard[];
+      const roundCardIdx = currentCards.findIndex(c => c.round === round);
+      if (roundCardIdx !== -1) {
+        const oldCard = currentCards[roundCardIdx];
+        const newCards = [...currentCards];
+        newCards[roundCardIdx] = drawServerCard(oldCard.slot, round);
+        await supabase.from("players").update({ cards: newCards }).eq("id", player.id);
       }
-      break;
-    case "D-2": // 偷取目標星星
-      if (target && target.stars > 0) {
-        await supabase.from("players").update({ stars: target.stars - 1 }).eq("id", target.id);
-        await supabase.from("players").update({ stars: player.stars + 1 }).eq("id", player.id);
+    } else if (randomEffect === "C-1") {
+      const nextPos = Math.min(100, player.position + 3);
+      await supabase.from("players").update({ position: nextPos }).eq("id", player.id);
+    } else if (randomEffect === "H-1") {
+      const nextPos = Math.min(100, player.position + 10);
+      await supabase.from("players").update({ position: nextPos }).eq("id", player.id);
+    } else if (randomEffect === "U-1") {
+      const nextLadder = findNearestEscalator(player.position);
+      if (nextLadder) {
+        await supabase.from("players").update({ position: nextLadder[1] }).eq("id", player.id);
       }
-      break;
-    case "C-1": // 獲得 1 顆星
-      await supabase.from("players").update({ stars: player.stars + 1 }).eq("id", player.id);
-      break;
-    case "C-2": // 指定互換位置
-      if (target) {
-        await supabase.from("players").update({ position: target.position }).eq("id", player.id);
-        await supabase.from("players").update({ position: player.position }).eq("id", target.id);
-      }
-      break;
+    }
   }
 }
 
@@ -280,10 +342,10 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
     for (const p of Array.from(playerMap.values())) {
       // 重新從當前卡牌狀態計算，確保精確性
       const pCards = p.cards as GameCard[];
-      const roundCard = pCards.find((c: GameCard) => c.round === round && !c.is_used);
+      const roundCards = pCards.filter((c: GameCard) => c.round === round && !c.is_used);
       const activeCards = pCards.filter((c: GameCard) => !c.is_used);
       const suits = countSuits(activeCards);
-      const basePoints = roundCard?.points ?? 0;
+      const basePoints = roundCards.reduce((acc, c) => acc + c.points, 0);
       const steps = Math.max(0, basePoints + suits.S - suits.C);
 
       if (steps > 0 || p.position === 100) {

@@ -181,16 +181,21 @@ function PlayerToken({
 
     if (
       (phase === "settle" || phase === "skill") &&
-      (hasNewPos || hasManual) &&
-      !isMovingRef.current &&
-      !isAlreadyProcessed
+      !isAlreadyProcessed &&
+      !isMovingRef.current
     ) {
-      if (phase === "settle") {
+      if (hasNewPos || hasManual) {
+        if (phase === "settle") {
+          processedRef.current = { round: currentRound, pos: player.position };
+        }
+        // 在播動畫前，把 lastPosRef 對齊實際出發點
+        lastPosRef.current = fromPos;
+        void animateMovement(hasManual ? manualTarget! : player.position);
+      } else if (phase === "settle") {
+        // 結算階段位置沒有改變，也應該標記為已處理，並直接觸發完成回調
         processedRef.current = { round: currentRound, pos: player.position };
+        onMoveComplete?.();
       }
-      // 在播動畫前，把 lastPosRef 對齊實際出發點
-      lastPosRef.current = fromPos;
-      void animateMovement(hasManual ? manualTarget! : player.position);
     }
 
     async function animateMovement(targetPos: number) {

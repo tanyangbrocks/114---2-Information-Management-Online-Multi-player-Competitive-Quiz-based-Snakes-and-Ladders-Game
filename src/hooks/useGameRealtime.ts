@@ -20,41 +20,58 @@ export function useGameRealtime(gameId: string | null) {
   // 儲存外部訂閱的 onMoveDone 回調
   const moveDoneCallbackRef = useRef<((payload: MoveDonePayload) => void) | null>(null);
 
+  const reloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const reload = useCallback(async (silent = false) => {
     if (!gameId) return;
-    if (!silent) setStatus("loading");
-    setError(null);
 
-    try {
-      const gRes = await supabase.from("games").select("*").eq("id", gameId).maybeSingle();
-      if (gRes.error) throw gRes.error;
-      
-      if (!gRes.data) {
-        setGame(null);
-        setPlayers([]);
+    const doFetch = async () => {
+      if (!silent) setStatus("loading");
+      setError(null);
+
+      try {
+        const gRes = await supabase.from("games").select("*").eq("id", gameId).maybeSingle();
+        if (gRes.error) throw gRes.error;
+        
+        if (!gRes.data) {
+          setGame(null);
+          setPlayers([]);
+          setStatus("error");
+          setError("找不到場次");
+          return;
+        }
+
+        const pRes = await supabase.from("players").select("*").eq("game_id", gameId).order("created_at");
+        if (pRes.error) throw pRes.error;
+
+        const aRes = await supabase.from("skill_actions").select("*").eq("game_id", gameId).eq("round", gRes.data.current_round);
+        if (aRes.error) throw aRes.error;
+
+        setGame(mapGameRow(gRes.data as Record<string, unknown>));
+        setPlayers((pRes.data ?? []).map((r) => mapPlayerRow(r as Record<string, unknown>)));
+        setSkillActions(aRes.data ?? []);
+        setStatus("ready");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "載入失敗");
         setStatus("error");
-        setError("找不到場次");
-        return;
       }
+    };
 
-      const pRes = await supabase.from("players").select("*").eq("game_id", gameId).order("created_at");
-      if (pRes.error) throw pRes.error;
-
-      const aRes = await supabase.from("skill_actions").select("*").eq("game_id", gameId).eq("round", gRes.data.current_round);
-      if (aRes.error) throw aRes.error;
-
-      setGame(mapGameRow(gRes.data as Record<string, unknown>));
-      setPlayers((pRes.data ?? []).map((r) => mapPlayerRow(r as Record<string, unknown>)));
-      setSkillActions(aRes.data ?? []);
-      setStatus("ready");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "載入失敗");
-      setStatus("error");
+    if (silent) {
+      if (reloadTimeoutRef.current) clearTimeout(reloadTimeoutRef.current);
+      reloadTimeoutRef.current = setTimeout(() => {
+        void doFetch();
+      }, 200); // 200ms 防抖
+    } else {
+      void doFetch();
     }
   }, [gameId, supabase]);
 
   useEffect(() => {
     void reload();
+    return () => {
+      if (reloadTimeoutRef.current) clearTimeout(reloadTimeoutRef.current);
+    };
   }, [reload]);
 
   // 定期輪詢 (Polling) 作為最終保險，解決 Realtime 可能失效的問題

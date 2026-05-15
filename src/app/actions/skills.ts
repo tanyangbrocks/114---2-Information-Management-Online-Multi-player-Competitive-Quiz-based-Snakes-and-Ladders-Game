@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@supabase/supabase-js";
-import type { SkillActionType, GameCard } from "@/types/game";
+import type { SkillActionType, GameCard, Suit } from "@/types/game";
 
 
 
@@ -62,6 +62,20 @@ export async function castSkill(
       return c;
     });
 
+    // 如果是 S-2，直接將玩家選擇的新牌加入手牌
+    if (actionType === "S-2" && metadata?.s2_suit && metadata?.s2_points) {
+      updatedCards.push({
+        id: `S2-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        suit: metadata.s2_suit as Suit,
+        points: Number(metadata.s2_points),
+        name: `瞬發補給 [${metadata.s2_suit}] · ${metadata.s2_points} 步`,
+        effect: "",
+        round: round,
+        slot: 2,
+        is_used: false
+      });
+    }
+
     // 4. 更新
     if (consumedCards.length > 0) {
       const { error: updateErr } = await supabase
@@ -80,7 +94,7 @@ export async function castSkill(
       target_player_id: targetPlayerId || null,
       consumed_cards: consumedCards,
       metadata: metadata || {},
-      status: "pending"
+      status: actionType === "S-2" ? "resolved" : "pending"
     });
 
     if (insertErr) {
@@ -93,9 +107,10 @@ export async function castSkill(
           action_type: actionType,
           target_player_id: targetPlayerId || null,
           consumed_cards: consumedCards,
-          status: "pending"
+          status: actionType === "S-2" ? "resolved" : "pending"
         });
         if (!retryErr) return { success: true };
+        await supabase.from("players").update({ cards }).eq("id", playerId);
         return { success: false, error: "寫入技能動作失敗: " + retryErr.message };
       }
 

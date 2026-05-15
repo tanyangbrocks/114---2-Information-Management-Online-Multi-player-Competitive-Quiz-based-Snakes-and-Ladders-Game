@@ -144,11 +144,13 @@ export function PlayClient({ params }: Props) {
     const cfg = game.rounds_config?.[game.current_round - 1];
     const isCorrect = cfg ? (choice === cfg.answer) : true;
 
-    // 鎖定：此回合已处理，不再重復
     lastFeedbackRoundRef.current = game.current_round;
     setAnswerFeedback(isCorrect ? "O" : "X");
-    const timer = setTimeout(() => setAnswerFeedback(null), 1500);
-    return () => clearTimeout(timer);
+    
+    // 獨立的計時器，不跟著 effect cleanup 連動，確保它一定會執行關閉
+    setTimeout(() => {
+      setAnswerFeedback((prev) => prev !== null ? null : prev);
+    }, 1500);
   }, [game?.phase, game?.current_round, self, game?.rounds_config, gameId]);
 
   // 抽牌邏輯獨立成另一個 effect，避免與 feedback effect 互相干擾
@@ -215,8 +217,8 @@ export function PlayClient({ params }: Props) {
     if (!self || !skillActions) return false;
     const myActions = skillActions.filter(a => a.player_id === self.id);
     if (myActions.length === 0) return false;
-    // 只要放過任何「非 S-2」的技能，或者 S-2 被攔截，就結束本回合技能權限
-    const hasNonS2 = myActions.some(a => a.action_type !== "S-2" && a.status === "resolved");
+    // 只要放過任何「非 S-2」的技能，或者 S-2 被攔截，且尚未被取消，就結束本回合技能權限
+    const hasNonS2 = myActions.some(a => a.action_type !== "S-2" && a.status !== "cancelled");
     return hasNonS2;
   }, [self, skillActions, hasActedSkillState]);
 
@@ -315,6 +317,12 @@ export function PlayClient({ params }: Props) {
   const [pendingCounter, setPendingCounter] = useState<{ id: string, action_type: string } | null>(null);
   const [snakeTarget, setSnakeTarget] = useState<{ position: number, starsGained: number, cards: GameCard[] } | null>(null);
 
+  const [s2Selection, setS2Selection] = useState<{
+    isOpen: boolean;
+    suit: "S" | "C" | "H" | "D" | null;
+    points: number | null;
+  }>({ isOpen: false, suit: null, points: null });
+
   useEffect(() => {
     if (!self || !skillActions) return;
     const counterAction = skillActions.find(a => a.target_player_id === self.id && a.status === 'waiting_counter');
@@ -368,6 +376,12 @@ export function PlayClient({ params }: Props) {
 
   const handleCastSkill = async (skill: AvailableSkill, explicitTarget?: string) => {
     if (!game || !self || hasActedSkill) return;
+
+    if (skill.actionType === "S-2") {
+      setS2Selection({ isOpen: true, suit: null, points: null });
+      return;
+    }
+
     setSkillBusy(true);
     const targetId = explicitTarget || selectedTarget;
     try {
@@ -380,13 +394,6 @@ export function PlayClient({ params }: Props) {
       } else if (skill.actionType === "S-1") {
         const card = availableCards.find(c => c.suit === "S");
         if (card) consumed = [card.id];
-      } else if (skill.actionType === "S-2") {
-        const matching = availableCards.filter(c => c.suit === "S").slice(0, 2);
-        consumed = matching.map(c => c.id);
-        if (consumed.length < 2) {
-          const dCard = availableCards.find(c => c.suit === "D" && !consumed.includes(c.id));
-          if (dCard) consumed.push(dCard.id);
-        }
       } else if (skill.actionType === "C-1") {
         const card = availableCards.find(c => c.suit === "C");
         if (card) consumed = [card.id];
@@ -424,11 +431,43 @@ export function PlayClient({ params }: Props) {
 
       const res = await castSkill(game.id, game.current_round, self.id, skill.actionType, consumed, targetId || undefined, cDirection ? { direction: cDirection } : undefined);
       if (res.success) {
-        if (skill.actionType !== "S-2") setHasActedSkillState(true);
+        setHasActedSkillState(true);
         setSkillPreview(null);
         setSkillStage("idle");
         setSelectedTarget("");
         setCDirection(null);
+        await reload(true);
+      } else {
+        alert(res.error || "發動技能失敗");
+      }
+    } catch (e) {
+      alert(String(e));
+    } finally {
+      setSkillBusy(false);
+    }
+  };
+
+  const handleConfirmS2 = async () => {
+    if (!game || !self) return;
+    const { suit, points } = s2Selection;
+    if (!suit || !points) return;
+
+    setSkillBusy(true);
+    setS2Selection({ isOpen: false, suit: null, points: null });
+    try {
+      let consumed: string[] = [];
+      const availableCards = getAvailableCards(self.cards).sort((a, b) => (a.round || 0) - (b.round || 0));
+      const matching = availableCards.filter(c => c.suit === "S").slice(0, 2);
+      consumed = matching.map(c => c.id);
+      if (consumed.length < 2) {
+        const dCard = availableCards.find(c => c.suit === "D" && !consumed.includes(c.id));
+        if (dCard) consumed.push(dCard.id);
+      }
+
+      const res = await castSkill(game.id, game.current_round, self.id, "S-2", consumed, undefined, { s2_suit: suit, s2_points: points });
+      if (res.success) {
+        setSkillPreview(null);
+        setSkillStage("idle");
         await reload(true);
       } else {
         alert(res.error || "發動技能失敗");
@@ -898,6 +937,50 @@ export function PlayClient({ params }: Props) {
           </ul>
         )}
       </aside>
+
+      {s2Selection.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm space-y-6">
+            <h3 className="text-2xl font-black text-milky-brown text-center">命運重啟</h3>
+            <p className="text-sm font-bold text-milky-brown/60 text-center">選擇一張卡牌加入本回合的移動步數</p>
+            
+            <div className="space-y-3">
+              <p className="text-sm font-bold text-milky-brown">1. 選擇花色</p>
+              <div className="grid grid-cols-4 gap-2">
+                {(["S", "H", "D", "C"] as const).map(s => (
+                  <button key={s} onClick={() => setS2Selection(prev => ({ ...prev, suit: s }))} className={`py-3 rounded-xl border-2 text-2xl font-black transition-all ${s2Selection.suit === s ? "border-milky-accent bg-milky-accent/10" : "border-milky-beige bg-milky-white hover:border-milky-apricot"}`}>
+                    <span className={s === "D" || s === "H" ? "text-milky-accent" : "text-milky-brown"}>
+                      {s === "S" ? "♠" : s === "H" ? "♥" : s === "D" ? "♦" : "♣"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-sm font-bold text-milky-brown">2. 選擇點數</p>
+              <div className="grid grid-cols-4 gap-2">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map(p => (
+                  <button key={p} onClick={() => setS2Selection(prev => ({ ...prev, points: p }))} className={`py-3 rounded-xl border-2 text-xl font-black transition-all ${s2Selection.points === p ? "border-milky-accent bg-milky-accent/10 text-milky-accent" : "border-milky-beige bg-milky-white text-milky-brown/60 hover:border-milky-apricot hover:text-milky-brown"}`}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setS2Selection({ isOpen: false, suit: null, points: null })} className="flex-1 py-3 rounded-xl font-bold text-milky-brown bg-milky-beige/50 hover:bg-milky-beige transition-colors">取消</button>
+              <button 
+                disabled={!s2Selection.suit || !s2Selection.points}
+                onClick={handleConfirmS2} 
+                className="flex-[2] py-3 rounded-xl font-bold text-white bg-milky-accent disabled:opacity-50 disabled:cursor-not-allowed hover:bg-milky-accent/90 transition-colors shadow-lg"
+              >
+                確認施放
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
