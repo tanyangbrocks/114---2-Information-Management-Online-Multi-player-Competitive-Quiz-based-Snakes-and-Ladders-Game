@@ -131,54 +131,60 @@ export function PlayClient({ params }: Props) {
   const lastDrawnRoundRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (game?.phase === "reveal" && self && gameId) {
-      // 防止重複觸發：只有在 ref 尚未記錄此回合 且 資料庫也沒有此回合卡牌時，才執行
-      if (lastDrawnRoundRef.current === game.current_round) return;
+    if (game?.phase !== "reveal" || !self || !gameId) return;
 
-      const alreadyDrawn = self.cards.some((c) => c.round === game.current_round);
-      if (alreadyDrawn) {
-        // 資料庫已有此回合的卡，同步 ref 防止重複嘗試
-        lastDrawnRoundRef.current = game.current_round;
-        return;
-      }
+    const roundKey = String(game.current_round);
+    const choice = self.answers[roundKey];
+    const cfg = game.rounds_config?.[game.current_round - 1];
+    const isCorrect = cfg ? (choice === cfg.answer) : (!!choice);
 
-      // 立即鎖定 ref，防止同一 effect 週期重複執行
-      lastDrawnRoundRef.current = game.current_round;
-
-      const roundKey = String(game.current_round);
-      const choice = self.answers[roundKey];
-
-      // 取得本輪正確答案配置（加入保底）
-      const cfg = game.rounds_config?.[game.current_round - 1];
-      const isCorrect = cfg ? (choice === cfg.answer) : (!!choice);
-
-      setAnswerFeedback(choice ? (isCorrect ? "O" : "X") : "X");
-
-      const card = drawForSlot(isCorrect ? 2 : 1, game.current_round);
-      const newCards = [...self.cards, card];
-      // 計算預計步數：點數 + 步數加乘 (S) - 步數減少 (C)
-      const suits = countSuits(newCards.filter(c => !c.is_used));
-      const predicted = card.points + suits.S - suits.C;
-
-      void supabase
-        .from("players")
-        .update({
-          cards: newCards,
-          predicted_steps: Math.max(0, predicted)
-        })
-        .eq("id", self.id)
-        .then(({ error }) => {
-          if (error) {
-            // 寫入失敗：釋放 ref 鎖，讓下一次 realtime 推播時重試
-            console.error("Card draw failed:", error);
-            lastDrawnRoundRef.current = null;
-            return;
-          }
-          void reload();
-          void sendSignal();
-          setTimeout(() => setAnswerFeedback(null), 1500);
-        });
+    // ── 無論是否已抽牌，都先呈現 O/X 反饋（並在 1.5 秒後自動清除）
+    if (choice) {
+      setAnswerFeedback(isCorrect ? "O" : "X");
+      const timer = setTimeout(() => setAnswerFeedback(null), 1500);
+      // 在 effect cleanup 時清除計時器，防止組件卸載後 setState
+      // （cleanup 在下次 effect 觸發或組件卸載時執行）
+      return () => clearTimeout(timer);
     }
+  }, [game?.phase, game?.current_round, self?.answers, game?.rounds_config, gameId]);
+
+  // 抽牌邏輯獨立成另一個 effect，避免與 feedback effect 互相干擾
+  useEffect(() => {
+    if (game?.phase !== "reveal" || !self || !gameId) return;
+    // 已經抽過了（ref 鎖 或 DB 已有卡）
+    if (lastDrawnRoundRef.current === game.current_round) return;
+    const alreadyDrawn = self.cards.some((c) => c.round === game.current_round);
+    if (alreadyDrawn) {
+      lastDrawnRoundRef.current = game.current_round;
+      return;
+    }
+
+    // 立即鎖定，避免同一 effect 週期內重複執行
+    lastDrawnRoundRef.current = game.current_round;
+
+    const roundKey = String(game.current_round);
+    const choice = self.answers[roundKey];
+    const cfg = game.rounds_config?.[game.current_round - 1];
+    const isCorrect = cfg ? (choice === cfg.answer) : (!!choice);
+
+    const card = drawForSlot(isCorrect ? 2 : 1, game.current_round);
+    const newCards = [...self.cards, card];
+    const suits = countSuits(newCards.filter(c => !c.is_used));
+    const predicted = card.points + suits.S - suits.C;
+
+    void supabase
+      .from("players")
+      .update({ cards: newCards, predicted_steps: Math.max(0, predicted) })
+      .eq("id", self.id)
+      .then(({ error }) => {
+        if (error) {
+          console.error("Card draw failed:", error);
+          lastDrawnRoundRef.current = null;
+          return;
+        }
+        void reload();
+        void sendSignal();
+      });
   }, [game?.phase, game?.current_round, game?.rounds_config, self, gameId, drawForSlot, reload, sendSignal, supabase]);
 
   const settledRoundRef = useRef<number>(-1);
@@ -306,14 +312,16 @@ export function PlayClient({ params }: Props) {
     }
   }, [skillActions, self]);
 
-  // 結算完成：只傳訊能給主辦方，不再重寫 DB（位置和星星伸服器已經算好）
+  // 結算完成：位置已由伺服器算好，這裡只需刷新本地資料、通知主辦方
   const handleMoveDone = useCallback(async () => {
     if (!self || !game) return;
     settledRoundRef.current = game.current_round;
     setLocalMoveTarget(null);
+    // reload 讓 self.position 同步到 DB 最新值，棋子才能穩定在終點
+    await reload();
     void sendMoveDone(self.id, self.name, self.position);
     void sendSignal();
-  }, [self, game, sendMoveDone, sendSignal]);
+  }, [self, game, reload, sendMoveDone, sendSignal]);
 
   const performMove = useCallback(async (pos: number, stars: number, heartToConsume?: string) => {
     if (!self || !game) return;
