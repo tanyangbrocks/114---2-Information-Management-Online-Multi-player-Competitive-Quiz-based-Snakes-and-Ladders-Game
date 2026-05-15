@@ -128,15 +128,18 @@ export function PlayClient({ params }: Props) {
     }
   };
 
+  const lastDrawnRoundRef = useRef<number | null>(null);
+
   useEffect(() => {
 
     if (game?.phase === "reveal" && self && gameId) {
+      if (lastDrawnRoundRef.current === game.current_round) return;
+
       const alreadyDrawn = self.cards.some((c) => c.round === game.current_round);
       if (!alreadyDrawn) {
+        lastDrawnRoundRef.current = game.current_round;
         const roundKey = String(game.current_round);
         const choice = self.answers[roundKey];
-        if (!choice) return;
-
         
         if (choice) {
           const cfg = game.rounds_config[game.current_round - 1];
@@ -166,9 +169,15 @@ export function PlayClient({ params }: Props) {
           // 未作答處理：自動抽錯題卡 (Slot 1)
           const card = drawForSlot(1, game.current_round);
           const newCards = [...self.cards, card];
+          const suits = countSuits(newCards.filter(c => !c.is_used));
+          const predicted = card.points + suits.S - suits.C;
+
           void supabase
             .from("players")
-            .update({ cards: newCards })
+            .update({ 
+              cards: newCards,
+              predicted_steps: Math.max(0, predicted)
+            })
             .eq("id", self.id)
             .then(() => {
               void reload();
