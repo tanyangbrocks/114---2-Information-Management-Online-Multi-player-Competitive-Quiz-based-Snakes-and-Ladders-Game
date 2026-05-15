@@ -393,6 +393,32 @@ export function PlayClient({ params }: Props) {
     );
   }
 
+  if (game.phase === "lobby") {
+    return (
+      <main className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4 py-10 page-fade-in text-center">
+        <MotionWrapper type="bounce" className="pudding-card space-y-8">
+          <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-milky-apricot/20 text-milky-brown shadow-inner">
+            <Loader2 className="h-12 w-12 animate-spin" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-3xl font-black text-milky-brown">已成功加入！</h2>
+            <p className="text-sm font-bold text-milky-brown/60 uppercase tracking-widest">等待主辦方啟動冒險...</p>
+          </div>
+          <div className="pt-6 border-t border-milky-beige/50">
+            <p className="text-[10px] font-black text-milky-brown/40 uppercase mb-4">目前已加入的冒險者</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {players.map(p => (
+                <div key={p.id} className="px-3 py-1 bg-white rounded-full border border-milky-beige text-xs font-bold text-milky-brown shadow-sm">
+                  {p.name}
+                </div>
+              ))}
+            </div>
+          </div>
+        </MotionWrapper>
+      </main>
+    );
+  }
+
   const roundKey = String(game.current_round);
   const needsAnswer = game.phase === "question" && !self.answers[roundKey];
   const isWaitingReveal = game.phase === "question" && !!self.answers[roundKey];
