@@ -295,10 +295,4 @@ function PlayerToken({
   );
 }
 
-type Props = {
-  players: PlayerRow[];
-  selfId?: string | null;
-  onPlayerClick?: (playerId: string) => void;
-  targetablePlayerIds?: string[];
-  phase?: string;
-};
+
