@@ -128,7 +128,7 @@ export function PlayClient({ params }: Props) {
     }
   };
 
-  const lastDrawnRoundRef = useRef<number | null>(null);
+  const isDrawingRef = useRef<boolean>(false);
   // 每回合只顯示一次 O/X，用 ref 鎖住防止因 self 更新而重復觸發
   const lastFeedbackRoundRef = useRef<number>(-1);
 
@@ -154,16 +154,14 @@ export function PlayClient({ params }: Props) {
   // 抽牌邏輯獨立成另一個 effect，避免與 feedback effect 互相干擾
   useEffect(() => {
     if (game?.phase !== "reveal" || !self || !gameId) return;
-    // 已經抽過了（ref 鎖 或 DB 已有卡）
-    if (lastDrawnRoundRef.current === game.current_round) return;
-    const alreadyDrawn = self.cards.some((c) => c.round === game.current_round);
-    if (alreadyDrawn) {
-      lastDrawnRoundRef.current = game.current_round;
-      return;
-    }
 
-    // 立即鎖定，避免同一 effect 週期內重複執行
-    lastDrawnRoundRef.current = game.current_round;
+    // 檢查是否已經抽過此回合的卡
+    const alreadyDrawn = self.cards.some((c) => c.round === game.current_round);
+    if (alreadyDrawn) return;
+
+    // 若正在抽取中，則等待（防止同一瞬間多次觸發）
+    if (isDrawingRef.current) return;
+    isDrawingRef.current = true;
 
     const roundKey = String(game.current_round);
     const choice = self.answers[roundKey];
@@ -175,19 +173,29 @@ export function PlayClient({ params }: Props) {
     const suits = countSuits(newCards.filter(c => !c.is_used));
     const predicted = card.points + suits.S - suits.C;
 
-    void supabase
-      .from("players")
-      .update({ cards: newCards, predicted_steps: Math.max(0, predicted) })
-      .eq("id", self.id)
-      .then(({ error }) => {
+    const performDraw = async () => {
+      try {
+        const { error } = await supabase
+          .from("players")
+          .update({ cards: newCards, predicted_steps: Math.max(0, predicted) })
+          .eq("id", self.id);
+          
+        isDrawingRef.current = false;
+        
         if (error) {
           console.error("Card draw failed:", error);
-          lastDrawnRoundRef.current = null;
           return;
         }
+        
         void reload();
         void sendSignal();
-      });
+      } catch (err) {
+        console.error("Card draw exception:", err);
+        isDrawingRef.current = false;
+      }
+    };
+    
+    void performDraw();
   }, [game?.phase, game?.current_round, game?.rounds_config, self, gameId, drawForSlot, reload, sendSignal, supabase]);
 
   const settledRoundRef = useRef<number>(-1);
