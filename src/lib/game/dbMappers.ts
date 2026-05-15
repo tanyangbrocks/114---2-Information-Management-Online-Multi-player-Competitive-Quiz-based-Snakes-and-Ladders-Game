@@ -26,26 +26,16 @@ export function parseRoundsConfig(raw: unknown): RoundConfig[] {
 
 export function parseCards(raw: unknown): GameCard[] {
   if (!Array.isArray(raw)) return [];
-  return raw
-    .map((c) => {
-      const o = c as Record<string, unknown>;
-      const slotValue = (o.slot === 1 || o.slot === 2 ? o.slot : 1) as 1 | 2;
-      const points = typeof o.points === "number" ? o.points : 0;
-      const round = typeof o.round === "number" ? o.round : 0;
-      const suit = isSuit(o.suit) ? o.suit : "S"; // 預設黑桃
-      const is_used = typeof o.is_used === "boolean" ? o.is_used : false;
-      return {
-        id: typeof o.id === "string" ? o.id : `card_${Math.random().toString(16).slice(2)}`,
-        name: typeof o.name === "string" ? o.name : "卡片",
-        points,
-        effect: typeof o.effect === "string" ? o.effect : "",
-        slot: slotValue,
-        round,
-        suit,
-        is_used
-      };
-    })
-    .filter((c) => c.points > 0 || c.suit); // 避免過濾掉點數為 0 但有花色的卡
+  return raw.map((c: any) => ({
+      id: String(c.id || ""),
+      name: String(c.name || "未知名卡牌"),
+      points: Number(c.points || 0),
+      effect: String(c.effect || ""),
+      slot: Number(c.slot || 1) as 1 | 2,
+      round: Number(c.round || 0),
+      suit: (c.suit as Suit) || "S",
+      is_used: Boolean(c.is_used)
+    }));
 }
 
 export function parseAnswers(raw: unknown): Record<string, QuizChoice> {

@@ -107,68 +107,53 @@ function PlayerToken({ player, isSelf, index }: { player: PlayerRow; isSelf: boo
       const to = player.position;
       
       const connector = [...ESCALATORS, ...EELS].find(([_, t]) => t === to);
-      const intermediateTo = connector ? connector[0] : to;
+      const steps = to - from;
 
-      const path: number[] = [];
-      if (intermediateTo > from) {
-        for (let i = from + 1; i <= intermediateTo; i++) path.push(i);
-      } else if (intermediateTo < from) {
-        for (let i = from - 1; i >= intermediateTo; i--) path.push(i);
-      }
+      if (Math.abs(steps) > 0) {
+        const direction = steps > 0 ? 1 : -1;
+        const durationPerStep = 0.15;
 
-      if (path.length > 0) {
-        const durationPerStep = Math.min(0.2, 1 / path.length);
-        for (const step of path) {
-          const coords = getCellCoords(step);
+        for (let i = from + direction; ; i += direction) {
+          const coords = getCellCoords(i);
           await controls.start({
             left: `${coords.x}%`,
             top: `${coords.y}%`,
             transition: { duration: durationPerStep, ease: "linear" }
           });
+          if (i === to) break;
         }
       }
-
-      if (connector) {
-        const finalCoords = getCellCoords(to);
-        await controls.start({
-          left: `${finalCoords.x}%`,
-          top: `${finalCoords.y}%`,
-          scale: [1, 1.3, 1],
-          transition: { duration: 0.8, ease: "easeInOut" }
-        });
-      }
-
       lastPosRef.current = to;
     }
-
     void animateMovement();
   }, [player.position, controls]);
 
-  const initialPos = useRef(player.position);
-  const initialCoords = useMemo(() => getCellCoords(initialPos.current), []);
+  const initialCoords = useMemo(() => getCellCoords(lastPosRef.current), []);
 
   return (
     <motion.div
       animate={controls}
       initial={{
         left: `${initialCoords.x}%`,
-        top: `${initialCoords.y}%`,
-        x: `calc(-50% + ${((index % 4) - 1.5) * 10}px)`,
-        y: `calc(-50% + ${(Math.floor(index / 4) - 0.5) * 10}px)`
+        top: `${initialCoords.y}%`
       }}
-      className="absolute h-[10%] w-[10%] flex items-center justify-center"
-      style={{ zIndex: isSelf ? 20 : 10 }}
+      className="absolute h-[10%] w-[10%] flex items-center justify-center pointer-events-none"
+      style={{ 
+        zIndex: isSelf ? 50 : 10 + index,
+        x: `calc(-50% + ${offsetX}px)`,
+        y: `calc(-50% + ${offsetY}px)`
+      }}
     >
       <div
         className={cn(
-          "h-4 w-4 sm:h-5 sm:w-5 rounded-full border-2 border-white shadow-lg transition-transform",
-          isSelf ? "bg-[#5D4037] ring-4 ring-[#FBCEB1]/50 scale-125" : "bg-[#FBCEB1]"
+          "h-5 w-5 sm:h-6 sm:w-6 rounded-full border-2 border-white shadow-xl transition-transform",
+          isSelf ? "bg-[#5D4037] ring-4 ring-white/50 scale-125 z-50" : "bg-white"
         )}
       >
         {isSelf && (
-           <div className="absolute inset-0 flex items-center justify-center">
-              <div className="h-1 w-1 bg-white rounded-full animate-ping" />
-           </div>
+          <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white px-2 py-0.5 rounded-md shadow-lg border border-milky-beige">
+            <p className="text-[8px] font-black text-milky-brown whitespace-nowrap">ME</p>
+          </div>
         )}
       </div>
     </motion.div>
