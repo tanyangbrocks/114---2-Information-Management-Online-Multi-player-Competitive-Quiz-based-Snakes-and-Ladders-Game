@@ -19,13 +19,13 @@ function getCellCoords(n: number) {
   return { x: x * 10 + 5, y: y * 10 + 5 };
 }
 
-export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds = [] }: Props) {
+export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds = [], phase }: Props) {
   const { buildZigzagGrid } = useSnakeLadderBoard();
   const grid = buildZigzagGrid();
 
   return (
     <div className="relative w-full max-w-xl select-none aspect-square">
-      {/* ... (grid and svg layers remain the same) ... */}
+      {/* 棋盤底層 */}
       <div className="grid grid-cols-10 gap-1 sm:gap-1.5 h-full w-full">
         {grid.flatMap((row) =>
           row.map((cell) => {
@@ -43,6 +43,7 @@ export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds 
         )}
       </div>
 
+      {/* SVG 連接線層 */}
       <svg className="absolute inset-0 pointer-events-none h-full w-full overflow-visible" viewBox="0 0 100 100">
         {ESCALATORS.map(([start, end], idx) => {
           const s = getCellCoords(start);
@@ -77,6 +78,7 @@ export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds 
         })}
       </svg>
 
+      {/* 玩家棋子層 */}
       <div className="absolute inset-0 pointer-events-none">
         {players.map((p, idx) => (
           <PlayerToken
@@ -86,6 +88,7 @@ export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds 
             index={idx}
             onClick={() => onPlayerClick?.(p.id)}
             isTargetable={targetablePlayerIds.includes(p.id)}
+            phase={phase}
           />
         ))}
       </div>
@@ -98,29 +101,39 @@ function PlayerToken({
   isSelf, 
   index, 
   onClick, 
-  isTargetable 
+  isTargetable,
+  phase
 }: { 
   player: PlayerRow; 
   isSelf: boolean; 
   index: number;
   onClick?: () => void;
   isTargetable?: boolean;
+  phase?: string;
 }) {
   const controls = useAnimation();
+  // 紀錄上一個確實渲染過的位置
   const lastPosRef = useRef(player.position);
 
   useEffect(() => {
+    // 當 phase 變為 settle 且位置與 lastPos 不符時，啟動動畫
+    if (phase === "settle" && player.position !== lastPosRef.current) {
+      void animateMovement();
+    } else if (phase !== "settle") {
+      // 在其他階段（如 reveal），同步 lastPosRef 並直接跳轉到該位置，確保 settle 時起點正確
+      lastPosRef.current = player.position;
+      const coords = getCellCoords(player.position);
+      controls.set({
+        left: `${coords.x}%`,
+        top: `${coords.y}%`
+      });
+    }
+
     async function animateMovement() {
-      if (player.position === lastPosRef.current) return;
-      
       const from = lastPosRef.current;
       const to = player.position;
       
-      // 等待一下，確保畫面轉場完成 (配合 Reveal 階段的動畫時間)
-      await new Promise(resolve => setTimeout(resolve, 1200));
-
-      // 1. 計算「走步」路徑 (從 from 走到 landingSpot)
-      // 使用 player.predicted_steps 來回推中間經過的格子
+      // 1. 計算「走步」路徑
       const steps = player.predicted_steps || 0;
       const steppingPath: number[] = [];
       
@@ -132,36 +145,31 @@ function PlayerToken({
         }
       }
 
-      // 2. 計算「傳送」路徑 (如果有梯子或電鰻)
+      // 2. 計算「傳送」路徑
       const landingSpot = steppingPath.length > 0 ? steppingPath[steppingPath.length - 1] : from;
       const { path: connectorPath } = applyConnectors(landingSpot);
       
-      // 3. 處理抵達 100 歸零的情況
+      // 3. 組合完整路徑
       const finalPath = [...steppingPath];
-      // connectorPath[0] 就是 landingSpot，所以從 1 開始
       for (let i = 1; i < connectorPath.length; i++) {
         finalPath.push(connectorPath[i]);
       }
       
-      // 如果最終位置是 1 且前一個不是 1，代表進了 100 歸零
+      // 處理 100 點歸零
       if (to === 1 && finalPath[finalPath.length - 1] !== 1) {
         if (finalPath[finalPath.length - 1] !== 100) finalPath.push(100);
         finalPath.push(1);
       } else if (finalPath.length === 0 || finalPath[finalPath.length - 1] !== to) {
-        // 安全機制：確保最後一格是目標位置
         finalPath.push(to);
       }
 
       // 執行移動動畫
-      // 「走步」部分總共 1 秒
       const steppingCount = steppingPath.length;
       const durationPerStep = steppingCount > 0 ? 1 / steppingCount : 0.2;
 
       for (let i = 0; i < finalPath.length; i++) {
         const cell = finalPath[i];
         const coords = getCellCoords(cell);
-        
-        // 判斷這一步是「走步」還是「傳送/跳轉」
         const isConnector = i >= steppingCount;
         const duration = isConnector ? 1.0 : durationPerStep;
         
@@ -177,10 +185,10 @@ function PlayerToken({
 
       lastPosRef.current = to;
     }
-    void animateMovement();
-  }, [player.position, controls, player.predicted_steps]);
+  }, [player.position, phase, controls, player.predicted_steps]);
 
-  const initialCoords = useMemo(() => getCellCoords(lastPosRef.current), []);
+  // 初始渲染位置
+  const initialCoords = useMemo(() => getCellCoords(player.position), []);
   
   const offsetX = (index % 3 - 1) * 8;
   const offsetY = (Math.floor(index / 3) - 1) * 8;
@@ -230,4 +238,5 @@ type Props = {
   selfId?: string | null;
   onPlayerClick?: (playerId: string) => void;
   targetablePlayerIds?: string[];
+  phase?: string;
 };

@@ -277,23 +277,31 @@ export function PlayClient({ params }: Props) {
     }
   }, [self, game, supabase, reload, sendMoveDone, sendSignal]);
 
+  const settledRoundRef = useRef<number>(-1);
+
   useEffect(() => {
     if (game?.phase === "settle" && self && gameId) {
       if (settledRoundRef.current === game.current_round) return;
       const card = self.cards.find((c) => c.round === game.current_round);
       if (!card || card.is_used) return;
+      
       settledRoundRef.current = game.current_round;
+      
       const move = moveBySteps(self.position, card.points, {
         spades: suitCounts.S,
         clubs: suitCounts.C
       });
-      if (move.position < (self.position + card.points + suitCounts.S - suitCounts.C)) {
+
+      // 檢查是否跌落且擁有紅心卡可抵銷
+      const moveDist = (card.points || 0) + suitCounts.S - suitCounts.C;
+      if (move.position < (self.position + Math.max(0, moveDist))) {
         const hearts = self.cards.filter(c => !c.is_used && c.suit === 'H');
         if (hearts.length > 0) {
           setSnakeTarget({ position: move.position, starsGained: move.starsGained, cards: hearts });
           return;
         }
       }
+      
       void performMove(move.position, move.starsGained);
     }
   }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, sendMoveDone, supabase, performMove, suitCounts.S, suitCounts.C]);
@@ -657,6 +665,7 @@ export function PlayClient({ params }: Props) {
         <BoardGrid 
           players={players} 
           selfId={self.id} 
+          phase={game.phase}
           onPlayerClick={(targetId) => {
             if (skillStage === "target") {
               setSelectedTarget(targetId);
