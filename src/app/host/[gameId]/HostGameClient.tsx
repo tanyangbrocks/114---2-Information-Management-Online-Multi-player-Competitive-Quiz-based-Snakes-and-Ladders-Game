@@ -28,7 +28,14 @@ export function HostGameClient({ params }: Props) {
 
   const { game, players, skillActions, status, error, reload, sendSignal } = useGameRealtime(gameId);
   const supabase = useMemo(() => createClient(), []);
-  const [busy, setBusy] = useState<"send" | "next" | "gift" | "bot" | null>(null);
+  const [busy, setBusy] = useState<"next" | "send" | "gift" | "bot" | null>(null);
+  const [isArbitrating, setIsArbitrating] = useState(false);
+
+  // 當階段改變或回合改變時，重置仲裁狀態
+  useEffect(() => {
+    setIsArbitrating(false);
+  }, [game?.phase, game?.current_round]);
+
   const [isGiftModalOpen, setIsGiftModalOpen] = useState(false);
   const [selectedGiftPlayerId, setSelectedGiftPlayerId] = useState<string>("");
   const [giftCounts, setGiftCounts] = useState<Record<Suit, number>>({ S: 0, C: 0, D: 0, H: 0 });
@@ -145,7 +152,7 @@ export function HostGameClient({ params }: Props) {
 
   // 序列仲裁處理器
   useEffect(() => {
-    if (game?.phase === "skill" && authorized) {
+    if (game?.phase === "skill" && authorized && isArbitrating) {
         // 檢查是否有 pending 狀態的技能
         const hasPending = skillActions.some(a => a.status === "pending" || a.status === "ready");
         const isWaiting = skillActions.some(a => a.status === "waiting_counter" || a.status === "waiting_choice");
@@ -157,9 +164,12 @@ export function HostGameClient({ params }: Props) {
                 await sendSignal();
             }, 1000); 
             return () => clearTimeout(timer);
+        } else if (!hasPending && !isWaiting) {
+            // 所有技能處理完畢，停止自動循環
+            setIsArbitrating(false);
         }
     }
-  }, [game?.phase, game?.current_round, skillActions, authorized, game?.id, reload, busy, sendSignal]);
+  }, [game?.phase, game?.current_round, skillActions, authorized, game?.id, reload, busy, sendSignal, isArbitrating]);
 
   const [waitingActionId, setWaitingActionId] = useState<string | null>(null);
   const [waitingTargetName, setWaitingTargetName] = useState<string | null>(null);
@@ -449,42 +459,68 @@ export function HostGameClient({ params }: Props) {
             )}
             {game.phase === "reveal" && (
               <button
-                onClick={startResolution}
+                onClick={async () => {
+                    setBusy("next");
+                    await supabase.from("games").update({ phase: "skill" }).eq("id", game.id);
+                    await reload();
+                    await sendSignal();
+                    setBusy(null);
+                }}
                 disabled={busy !== null}
                 className="pudding-button bg-milky-accent text-white hover:opacity-90 flex items-center gap-2 shadow-lg"
               >
                 {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                {skillActions.length > 0 ? "開始處理玩家技能" : "跳過技能處理直接結算"}
+                進入玩家技能選擇 🃏
               </button>
             )}
             {game.phase === "skill" && (
-              <div className="flex items-center gap-4">
-                {/* 只要有任何一個技能還沒 resolved/cancelled，就顯示仲裁中 */}
-                {skillActions.some(a => a.status === "pending" || a.status === "waiting_counter" || a.status === "ready") ? (
+              <div className="flex flex-col items-center gap-4">
+                {/* 1. 如果還沒開始仲裁，顯示「開始處理」按鈕 */}
+                {!isArbitrating && skillActions.some(a => a.status === "pending" || a.status === "ready" || a.status === "waiting_counter") && (
+                   <button
+                    onClick={() => setIsArbitrating(true)}
+                    className="pudding-button-primary bg-milky-accent flex items-center gap-2 animate-pulse"
+                   >
+                     <Sparkles className="h-5 w-5" />
+                     確認選擇完畢，開始執行技能處理 🚀
+                   </button>
+                )}
+
+                {/* 2. 仲裁中的狀態顯示 */}
+                {isArbitrating ? (
                   <div className="flex items-center gap-3 bg-white/80 border-2 border-milky-beige px-6 py-3 rounded-full shadow-sm">
                     <Loader2 className="h-5 w-5 text-milky-accent animate-spin" />
-                    <span className="text-sm font-black text-milky-brown">技能仲裁中...</span>
-                    {skillActions.some(a => a.status === "waiting_counter") && (
-                        <span className="text-[10px] bg-milky-apricot text-white px-2 py-0.5 rounded-full animate-pulse ml-2">
-                            等待反制中
-                        </span>
-                    )}
+                    <span className="text-sm font-black text-milky-brown">技能仲裁處理中...</span>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="flex items-center gap-3 bg-milky-accent/10 border-2 border-milky-accent px-6 py-3 rounded-full shadow-sm animate-bounce">
-                        <CheckCircle2 className="h-5 w-5 text-milky-accent" />
-                        <span className="text-sm font-black text-milky-accent">技能處理完畢！</span>
+                  // 3. 處理完畢後的狀態
+                  !skillActions.some(a => a.status === "pending" || a.status === "ready" || a.status === "waiting_counter") && (
+                    <div className="flex flex-col items-center gap-2">
+                        <div className="flex items-center gap-3 bg-milky-accent/10 border-2 border-milky-accent px-6 py-3 rounded-full shadow-sm">
+                            <CheckCircle2 className="h-5 w-5 text-milky-accent" />
+                            <span className="text-sm font-black text-milky-accent">技能處理完畢！</span>
+                        </div>
+                        <button
+                            onClick={settleMoves}
+                            disabled={busy !== null}
+                            className="pudding-button bg-milky-apricot text-milky-brown hover:opacity-90 flex items-center gap-2 shadow-lg mt-2"
+                        >
+                            {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />}
+                            執行最終結算移動 🚀
+                        </button>
                     </div>
-                    <button
-                        onClick={settleMoves}
-                        disabled={busy !== null}
-                        className="pudding-button bg-milky-apricot text-milky-brown hover:opacity-90 flex items-center gap-2 shadow-lg mt-2"
-                    >
-                        {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />}
-                        執行最終結算移動 🚀
-                    </button>
-                  </div>
+                  )
+                )}
+
+                {/* 如果完全沒技能，直接顯示結算按鈕 */}
+                {!isArbitrating && skillActions.length === 0 && (
+                   <button
+                    onClick={settleMoves}
+                    disabled={busy !== null}
+                    className="pudding-button-primary bg-milky-apricot text-milky-brown flex items-center gap-2"
+                   >
+                     無人發動技能，直接位移結算 🚀
+                   </button>
                 )}
               </div>
             )}
@@ -504,7 +540,12 @@ export function HostGameClient({ params }: Props) {
 
       <div className="grid gap-4 lg:grid-cols-[320px,1fr]">
         <QRInvitePanel inviteUrl={inviteUrl} inviteCode={game.invite_code} />
-        <HostPlayerTable game={game} players={players} />
+        <HostPlayerTable 
+          game={game} 
+          players={players} 
+          skillActions={skillActions}
+          isArbitrating={isArbitrating}
+        />
       </div>
 
       {/* settle 階段：顯示各玩家移動確認狀態 */}

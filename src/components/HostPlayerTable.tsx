@@ -1,13 +1,15 @@
 "use client";
 
-import type { GameRow, PlayerRow, QuizChoice } from "@/types/game";
+import type { GameRow, PlayerRow, QuizChoice, SkillAction } from "@/types/game";
 
 type Props = {
   game: GameRow;
   players: PlayerRow[];
+  skillActions: SkillAction[];
+  isArbitrating: boolean;
 };
 
-export function HostPlayerTable({ game, players }: Props) {
+export function HostPlayerTable({ game, players, skillActions, isArbitrating }: Props) {
   const rounds = Array.from({ length: game.round_count }, (_, i) => i + 1);
 
   return (
@@ -26,6 +28,7 @@ export function HostPlayerTable({ game, players }: Props) {
           <thead className="sticky top-0 bg-milky-beige/40 text-[10px] font-black uppercase tracking-widest text-milky-brown/50 backdrop-blur-md">
             <tr>
               <th className="px-6 py-3">玩家</th>
+              <th className="px-6 py-3 text-center">狀態</th>
               {rounds.map((r) => (
                 <th key={r} className="px-2 py-3">
                   R{r}
@@ -40,16 +43,49 @@ export function HostPlayerTable({ game, players }: Props) {
           </thead>
           <tbody>
             {players.map((p) => {
-              // 即時計算被動加成與預計步數
               const sCount = p.cards.filter(c => c.suit === 'S' && !c.is_used).length;
               const cCount = p.cards.filter(c => c.suit === 'C' && !c.is_used).length;
               const mod = sCount - cCount;
               const roundCard = p.cards.find(c => c.round === game.current_round);
               const pred = Math.max(0, (roundCard?.points || 0) + mod);
 
+              const roundKey = String(game.current_round);
+              const hasAnswered = !!p.answers[roundKey];
+              const hasSelectedSkill = skillActions.some(a => a.player_id === p.id && a.round === game.current_round);
+
+              let statusText = "等待中";
+              let statusColor = "text-milky-brown/40";
+
+              if (game.phase === "question") {
+                statusText = hasAnswered ? "等待公布答案" : "答題中";
+                statusColor = hasAnswered ? "text-milky-accent" : "text-milky-brown animate-pulse";
+              } else if (game.phase === "reveal") {
+                statusText = "拿到卡牌 (預覽中)";
+                statusColor = "text-milky-brown";
+              } else if (game.phase === "skill") {
+                if (isArbitrating) {
+                  statusText = "技能處理中";
+                  statusColor = "text-milky-accent animate-pulse";
+                } else {
+                  statusText = hasSelectedSkill ? "技能選擇完畢" : "技能選擇中";
+                  statusColor = hasSelectedSkill ? "text-milky-accent" : "text-milky-brown animate-pulse";
+                }
+              } else if (game.phase === "settle") {
+                statusText = "移動中";
+                statusColor = "text-milky-accent animate-bounce";
+              } else if (game.phase === "between_rounds") {
+                statusText = "準備下回合";
+                statusColor = "text-milky-brown/60";
+              }
+
               return (
                 <tr key={p.id} className="border-t border-milky-beige/20 hover:bg-milky-apricot/5 transition-colors">
                   <td className="px-6 py-4 font-black text-milky-brown">{p.name}</td>
+                  <td className="px-6 py-4">
+                    <div className={`text-center font-black text-[10px] uppercase tracking-tighter ${statusColor}`}>
+                      {statusText}
+                    </div>
+                  </td>
                   {rounds.map((r) => {
                     const ans = p.answers[String(r)] as QuizChoice | undefined;
                     return (
