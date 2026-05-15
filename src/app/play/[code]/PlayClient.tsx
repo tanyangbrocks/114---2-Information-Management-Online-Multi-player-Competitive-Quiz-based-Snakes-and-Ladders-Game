@@ -113,7 +113,7 @@ export function PlayClient({ params }: Props) {
   };
 
   useEffect(() => {
-    let timer: NodeJS.Timeout | null = null;
+
     if (game?.phase === "reveal" && self && gameId) {
       const alreadyDrawn = self.cards.some((c) => c.round === game.current_round);
       if (!alreadyDrawn) {
@@ -123,10 +123,8 @@ export function PlayClient({ params }: Props) {
 
         const cfg = game.rounds_config[game.current_round - 1];
         if (!cfg) return;
-
         const isCorrect = cfg.answer === choice;
         setAnswerFeedback(isCorrect ? "O" : "X");
-        timer = setTimeout(() => setAnswerFeedback(null), 1500);
 
         const card = drawForSlot(isCorrect ? 2 : 1, game.current_round);
         const newCards = [...self.cards, card];
@@ -138,12 +136,11 @@ export function PlayClient({ params }: Props) {
           .then(() => {
             void reload();
             void sendSignal();
+            // 獨立計時器，確保 1.5 秒後清除
+            setTimeout(() => setAnswerFeedback(null), 1500);
           });
       }
     }
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
   }, [game?.phase, game?.current_round, game?.rounds_config, self, gameId, drawForSlot, reload, sendSignal, supabase]);
 
   const settledRoundRef = useRef<number>(-1);
@@ -189,7 +186,7 @@ export function PlayClient({ params }: Props) {
     }
   }, [predictedSteps, passiveModifier, self, supabase]);
 
-  const availableCards = useMemo(() => self?.cards?.filter((c) => !c.is_used) || [], [self]);
+
   const availableSkills = useMemo(() => {
     if (!self) return [];
     return calculateAvailableSkills(self.cards || [], players.filter(p => p.id !== self.id), self.position);
@@ -313,7 +310,10 @@ export function PlayClient({ params }: Props) {
         }
       }
       
-      void performMove(move.position, move.starsGained);
+      // 延遲一下下再更新 DB，確保 phase 已經同步到所有客戶端且畫面已就緒
+      setTimeout(() => {
+        void performMove(move.position, move.starsGained);
+      }, 500);
     }
   }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, sendMoveDone, supabase, performMove, suitCounts.S, suitCounts.C]);
 
@@ -699,15 +699,28 @@ export function PlayClient({ params }: Props) {
           <div><p className="text-[10px] font-black text-milky-accent/50 mb-1">♦</p><p className="text-lg font-black text-milky-accent">{suitCounts.D}</p></div>
           <div><p className="text-[10px] font-black text-milky-accent/50 mb-1">♥</p><p className="text-lg font-black text-milky-accent">{suitCounts.H}</p></div>
         </div>
-        {availableCards.length === 0 ? <div className="py-20 text-center rounded-[3rem] border-4 border-dashed border-milky-beige/30"><p className="text-xs font-black text-milky-brown/20 uppercase tracking-[0.3em]">No cards collected</p></div> : (
+        {self.cards.length === 0 ? <div className="py-20 text-center rounded-[3rem] border-4 border-dashed border-milky-beige/30"><p className="text-xs font-black text-milky-brown/20 uppercase tracking-[0.3em]">No cards collected</p></div> : (
           <ul className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-            {[...availableCards].reverse().map((c) => (
-              <MotionWrapper type="bounce" key={c.id} className="group relative overflow-hidden rounded-[2.5rem] border-2 border-milky-beige bg-white p-6 shadow-sm hover:border-milky-apricot transition-all">
-                <div className="flex justify-between items-center">
-                  <div><p className="text-lg font-black text-milky-brown tracking-tight">{c.name}</p><p className="text-[10px] font-black text-milky-brown/20 uppercase tracking-widest">Round {c.round}</p></div>
-                  <span className={`text-3xl ${c.suit === 'S' || c.suit === 'C' ? 'text-milky-brown/20' : 'text-milky-accent/20'} transition-transform group-hover:scale-125`}>{c.suit === 'S' ? '♠' : c.suit === 'C' ? '♣' : c.suit === 'D' ? '♦' : '♥'}</span>
+            {[...self.cards].reverse().map((c) => (
+              <MotionWrapper type="bounce" key={c.id} className={`group relative overflow-hidden rounded-[2.5rem] border-2 p-6 shadow-sm transition-all ${c.is_used ? 'bg-milky-beige/10 border-milky-beige/30 grayscale-[0.8]' : 'bg-white border-milky-beige hover:border-milky-apricot'}`}>
+                {c.is_used && (
+                   <div className="absolute top-2 right-4 bg-milky-brown/10 text-[8px] font-black px-2 py-0.5 rounded-full text-milky-brown/40 tracking-widest">USED</div>
+                )}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className={`text-lg font-black tracking-tight ${c.is_used ? 'text-milky-brown/40' : 'text-milky-brown'}`}>{c.name}</p>
+                    <p className="text-[10px] font-bold text-milky-brown/30 uppercase">Round {c.round}</p>
+                  </div>
+                  <div className={`text-3xl ${c.is_used ? 'opacity-20' : 'text-milky-accent/40 group-hover:scale-125 transition-transform'}`}>
+                    {c.suit === 'S' && '♠'}
+                    {c.suit === 'C' && '♣'}
+                    {c.suit === 'D' && '♦'}
+                    {c.suit === 'H' && '♥'}
+                  </div>
                 </div>
-                <div className="absolute inset-y-0 left-0 w-1.5 bg-milky-apricot opacity-0 group-hover:opacity-100 transition-opacity" />
+                {!c.is_used && (
+                  <div className="absolute inset-y-0 left-0 w-1.5 bg-milky-apricot opacity-0 group-hover:opacity-100 transition-opacity" />
+                )}
               </MotionWrapper>
             ))}
           </ul>

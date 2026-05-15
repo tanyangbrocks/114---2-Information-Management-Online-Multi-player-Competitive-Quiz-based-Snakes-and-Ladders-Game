@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@supabase/supabase-js";
-import type { GameCard, Suit, SkillActionType } from "@/types/game";
+import type { GameCard, Suit, SkillActionType, PlayerRow } from "@/types/game";
 import { countSuits } from "@/lib/game/skillEngine";
 import { ESCALATORS } from "@/lib/game/boardEngine";
 
@@ -155,11 +155,20 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
     }
 
     // 5. 批次更新玩家狀態
+    // 關鍵修復：只有在卡片真的被技能修改時才更新 cards 欄位，避免覆蓋掉玩家剛抽到的新卡
     for (const p of Array.from(playerMap.values())) {
-      await supabase.from("players").update({ 
-        position: p.position, 
-        cards: p.cards
-      }).eq("id", p.id);
+      const originalPlayer = players.find(op => op.id === p.id);
+      const cardsModified = JSON.stringify(p.cards) !== JSON.stringify(originalPlayer?.cards);
+      
+      const updatePayload: Partial<PlayerRow> = { 
+        position: p.position,
+      };
+      
+      if (cardsModified) {
+        updatePayload.cards = p.cards;
+      }
+
+      await supabase.from("players").update(updatePayload).eq("id", p.id);
     }
 
     // 6. 更新遊戲狀態到 settle

@@ -116,17 +116,22 @@ function PlayerToken({
   const lastPosRef = useRef(player.position);
 
   useEffect(() => {
-    // 當 phase 變為 settle 且位置與 lastPos 不符時，啟動動畫
-    if (phase === "settle" && player.position !== lastPosRef.current) {
-      void animateMovement();
-    } else if (phase !== "settle") {
-      // 在其他階段（如 reveal），同步 lastPosRef 並直接跳轉到該位置，確保 settle 時起點正確
+    // 只有在準備階段、題目階段、或回合間隙，才安靜地同步位置起點
+    // 這樣在 reveal 或 skill 階段產生的位移，就會在 settle 時被動畫呈現
+    if (phase === "lobby" || phase === "question" || phase === "between_rounds") {
       lastPosRef.current = player.position;
       const coords = getCellCoords(player.position);
       controls.set({
         left: `${coords.x}%`,
         top: `${coords.y}%`
       });
+    }
+  }, [phase, player.position, controls]);
+
+  useEffect(() => {
+    // 當進入 settle 或 skill 階段，且位置與上次紀錄不同，則啟動動畫
+    if ((phase === "settle" || phase === "skill") && player.position !== lastPosRef.current) {
+      void animateMovement();
     }
 
     async function animateMovement() {
@@ -155,7 +160,6 @@ function PlayerToken({
         finalPath.push(connectorPath[i]);
       }
       
-      // 處理 100 點歸零
       if (to === 1 && finalPath[finalPath.length - 1] !== 1) {
         if (finalPath[finalPath.length - 1] !== 100) finalPath.push(100);
         finalPath.push(1);
@@ -188,7 +192,7 @@ function PlayerToken({
   }, [player.position, phase, controls, player.predicted_steps]);
 
   // 初始渲染位置
-  const initialCoords = useMemo(() => getCellCoords(player.position), []);
+  const initialCoords = useMemo(() => getCellCoords(player.position), [player.position]);
   
   const offsetX = (index % 3 - 1) * 8;
   const offsetY = (Math.floor(index / 3) - 1) * 8;
