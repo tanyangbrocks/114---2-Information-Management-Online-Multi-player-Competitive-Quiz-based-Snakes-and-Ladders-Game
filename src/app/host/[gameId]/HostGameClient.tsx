@@ -8,8 +8,14 @@ import { useGameRealtime } from "@/hooks/useGameRealtime";
 import { resolveSkillsAndStartSettle } from "@/app/actions/resolveSkills";
 import { useMemo, useState, useEffect, useRef, use } from "react";
 import { useSearchParams } from "next/navigation";
+import { AnimatePresence } from "framer-motion";
+import { Loader2, Radio, SkipForward, Trophy, Sparkles, LayoutDashboard, Gift, Plus, Minus, X, UserPlus } from "lucide-react";
+import { giveCardsToPlayer, addBotToGame } from "@/app/actions/hostActions";
+import { moveBySteps } from "@/lib/game/boardEngine";
+import { countSuits } from "@/lib/game/skillEngine";
+import { useCardDraw } from "@/hooks/useCardDraw";
 import { MotionWrapper } from "@/components/MotionWrapper";
-import { Loader2, Radio, SkipForward, Trophy, Sparkles, LayoutDashboard } from "lucide-react";
+import type { Suit, QuizChoice } from "@/types/game";
 
 type Props = {
   params: Promise<{ gameId: string }>;
@@ -22,7 +28,10 @@ export function HostGameClient({ params }: Props) {
 
   const { game, players, skillActions, status, error, reload, sendSignal } = useGameRealtime(gameId);
   const supabase = useMemo(() => createClient(), []);
-  const [busy, setBusy] = useState<"send" | "next" | null>(null);
+  const [busy, setBusy] = useState<"send" | "next" | "gift" | "bot" | null>(null);
+  const [isGiftModalOpen, setIsGiftModalOpen] = useState(false);
+  const [selectedGiftPlayerId, setSelectedGiftPlayerId] = useState<string>("");
+  const [giftCounts, setGiftCounts] = useState<Record<Suit, number>>({ S: 0, C: 0, D: 0, H: 0 });
 
   // 在進入 settle 時快照各玩家的舊位置，用於後續比對是否已移動
   const settleBaselineRef = useRef<Map<string, number>>(new Map());
@@ -192,6 +201,133 @@ export function HostGameClient({ params }: Props) {
     }
   };
 
+  const handleGiveCards = async () => {
+    if (!selectedGiftPlayerId) return;
+    setBusy("gift");
+    try {
+      const res = await giveCardsToPlayer(selectedGiftPlayerId, giftCounts);
+      if (res.success) {
+        setIsGiftModalOpen(false);
+        setGiftCounts({ S: 0, C: 0, D: 0, H: 0 });
+        await reload();
+      } else {
+        alert(res.error);
+      }
+    } catch {
+      alert("操作失敗");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const updateGiftCount = (suit: Suit, delta: number) => {
+    setGiftCounts(prev => ({
+      ...prev,
+      [suit]: Math.max(0, prev[suit] + delta)
+    }));
+  };
+
+  const handleAddBot = async () => {
+    if (!game) return;
+    setBusy("bot");
+    try {
+      const res = await addBotToGame(game.id);
+      if (res.success) {
+        await reload();
+      } else {
+        alert(res.error);
+      }
+    } catch {
+      alert("新增失敗");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const { drawForSlot } = useCardDraw();
+  const botProcessedRef = useRef<Set<string>>(new Set());
+
+  // 機器人 AI 邏輯
+  useEffect(() => {
+    if (!game || game.phase === "lobby" || game.phase === "between_rounds" || game.phase === "finished") {
+      botProcessedRef.current.clear();
+      return;
+    }
+
+    const processBots = async () => {
+      const bots = players.filter(p => p.name.startsWith("[Bot]"));
+      for (const bot of bots) {
+        const actionKey = `${game.phase}_${game.current_round}_${bot.id}`;
+        if (botProcessedRef.current.has(actionKey)) continue;
+
+        // 1. 答題階段：隨機答題
+        if (game.phase === "question") {
+          const roundKey = String(game.current_round);
+          if (!bot.answers[roundKey]) {
+            const choices: QuizChoice[] = ["A", "B", "C", "D"];
+            const randomAnswer = choices[Math.floor(Math.random() * 4)];
+            const updatedAnswers = { ...bot.answers, [roundKey]: randomAnswer };
+            await supabase.from("players").update({ answers: updatedAnswers }).eq("id", bot.id);
+            botProcessedRef.current.add(actionKey);
+          }
+        }
+
+        // 2. 公布答案階段：自動抽卡
+        if (game.phase === "reveal") {
+          const alreadyDrawn = bot.cards.some(c => c.round === game.current_round);
+          if (!alreadyDrawn) {
+            const roundKey = String(game.current_round);
+            const cfg = game.rounds_config[game.current_round - 1];
+            if (cfg) {
+              const isCorrect = bot.answers[roundKey] === cfg.answer;
+              const card = drawForSlot(isCorrect ? 2 : 1, game.current_round);
+              const updatedCards = [...bot.cards, card];
+              await supabase.from("players").update({ cards: updatedCards }).eq("id", bot.id);
+              botProcessedRef.current.add(actionKey);
+            }
+          }
+        }
+
+        // 3. 技能階段：機器人一律略過 (PASS) 以簡化邏輯
+        if (game.phase === "skill") {
+          const hasAction = skillActions?.some(a => a.player_id === bot.id && a.round === game.current_round);
+          if (!hasAction) {
+            await supabase.from("skill_actions").insert({
+              game_id: game.id,
+              round: game.current_round,
+              player_id: bot.id,
+              action_type: "PASS",
+              status: "ready",
+              consumed_cards: []
+            });
+            botProcessedRef.current.add(actionKey);
+          }
+        }
+
+        // 4. 結算階段：自動移動
+        if (game.phase === "settle") {
+          const card = bot.cards.find(c => c.round === game.current_round);
+          if (card && !card.is_used) {
+            const suitCounts = countSuits(bot.cards.filter(c => !c.is_used));
+            const move = moveBySteps(bot.position, card.points, {
+               spades: suitCounts.S,
+               clubs: suitCounts.C
+            });
+            const updatedCards = bot.cards.map(c => c.id === card.id ? { ...c, is_used: true } : c);
+            await supabase.from("players").update({
+              position: move.position,
+              stars: bot.stars + move.starsGained,
+              cards: updatedCards
+            }).eq("id", bot.id);
+            botProcessedRef.current.add(actionKey);
+          }
+        }
+      }
+    };
+
+    void processBots();
+  }, [game, players, skillActions, drawForSlot, supabase]);
+
   if (status === "loading" || status === "idle") {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-milky-brown">
@@ -235,16 +371,35 @@ export function HostGameClient({ params }: Props) {
           <p className="text-sm font-bold text-milky-brown/40">管理冒險進度與玩家互動</p>
         </div>
         {game.phase === "lobby" ? (
-          <MotionWrapper type="bounce" className="pudding-card !bg-milky-apricot/20 border-milky-apricot/30 flex items-center gap-6 py-4 px-8">
-            <h3 className="text-sm font-black text-milky-brown/60 italic">等待人員到齊中...</h3>
-            <button
-              onClick={startGame}
-              disabled={busy !== null}
-              className="pudding-button-primary shadow-milky-apricot/40 px-10 text-lg"
-            >
-              {busy === "next" ? <Loader2 className="h-6 w-6 animate-spin" /> : "啟動冒險"}
-            </button>
-          </MotionWrapper>
+          <div className="flex flex-col gap-4">
+            <MotionWrapper type="bounce" className="pudding-card !bg-milky-apricot/20 border-milky-apricot/30 flex items-center gap-6 py-4 px-8">
+              <h3 className="text-sm font-black text-milky-brown/60 italic">等待人員到齊中...</h3>
+              <div className="flex gap-4">
+                <button
+                  onClick={handleAddBot}
+                  disabled={busy !== null}
+                  className="pudding-button border-2 border-milky-brown bg-white text-milky-brown hover:bg-milky-brown hover:text-white flex items-center gap-2"
+                >
+                  <UserPlus className="h-5 w-5" />
+                  加入機器人
+                </button>
+                <button
+                  onClick={() => setIsGiftModalOpen(true)}
+                  className="pudding-button border-2 border-milky-apricot bg-white text-milky-apricot hover:bg-milky-apricot hover:text-white flex items-center gap-2"
+                >
+                  <Gift className="h-5 w-5" />
+                  發放物資
+                </button>
+                <button
+                  onClick={startGame}
+                  disabled={busy !== null}
+                  className="pudding-button-primary shadow-milky-apricot/40 px-10 text-lg"
+                >
+                  {busy === "next" ? <Loader2 className="h-6 w-6 animate-spin" /> : "啟動冒險"}
+                </button>
+              </div>
+            </MotionWrapper>
+          </div>
         ) : (
           <div className="flex flex-wrap items-center justify-center gap-4 bg-white/40 p-2 rounded-[2.5rem] border-2 border-milky-beige backdrop-blur-sm">
             {game.phase === "between_rounds" && (
@@ -382,6 +537,82 @@ export function HostGameClient({ params }: Props) {
           </ol>
         </section>
       )}
+      {/* 管理員給予卡片 Modal */}
+      <AnimatePresence>
+        {isGiftModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-milky-brown/60 p-4 backdrop-blur-sm">
+            <MotionWrapper type="bounce" className="w-full max-w-md">
+              <div className="pudding-card bg-white shadow-2xl border-4 border-milky-apricot relative">
+                <button 
+                  onClick={() => setIsGiftModalOpen(false)}
+                  className="absolute top-4 right-4 text-milky-brown/40 hover:text-milky-brown transition-colors"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+
+                <div className="flex items-center gap-3 mb-8">
+                  <div className="bg-milky-apricot text-white p-2 rounded-xl shadow-lg">
+                    <Gift className="h-6 w-6" />
+                  </div>
+                  <h2 className="text-2xl font-black text-milky-brown tracking-tighter">給予玩家物資</h2>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black text-milky-brown/40 uppercase tracking-widest block mb-2">選擇對象</label>
+                    <select 
+                      value={selectedGiftPlayerId}
+                      onChange={(e) => setSelectedGiftPlayerId(e.target.value)}
+                      className="w-full pudding-card !bg-milky-beige/10 border-milky-beige text-milky-brown font-bold focus:outline-none focus:border-milky-apricot transition-colors"
+                    >
+                      <option value="">請選擇玩家...</option>
+                      {players.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {(["S", "C", "D", "H"] as Suit[]).map(suit => (
+                      <div key={suit} className="pudding-card !bg-white border-milky-beige/50 flex flex-col items-center gap-3">
+                        <span className="text-2xl">
+                          {suit === 'S' && '♠'}
+                          {suit === 'C' && '♣'}
+                          {suit === 'D' && '♦'}
+                          {suit === 'H' && '♥'}
+                        </span>
+                        <div className="flex items-center gap-4">
+                          <button 
+                            onClick={() => updateGiftCount(suit, -1)}
+                            className="h-8 w-8 rounded-full bg-milky-beige/30 flex items-center justify-center text-milky-brown hover:bg-milky-beige transition-colors"
+                          >
+                            <Minus className="h-4 w-4" />
+                          </button>
+                          <span className="text-xl font-black text-milky-brown w-6 text-center">{giftCounts[suit]}</span>
+                          <button 
+                            onClick={() => updateGiftCount(suit, 1)}
+                            className="h-8 w-8 rounded-full bg-milky-apricot/20 flex items-center justify-center text-milky-apricot hover:bg-milky-apricot/30 transition-colors"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={handleGiveCards}
+                    disabled={busy === "gift" || !selectedGiftPlayerId || Object.values(giftCounts).every(v => v === 0)}
+                    className="pudding-button-primary w-full py-4 text-lg shadow-xl"
+                  >
+                    {busy === "gift" ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : "確認發放"}
+                  </button>
+                </div>
+              </div>
+            </MotionWrapper>
+          </div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }

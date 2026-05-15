@@ -63,12 +63,14 @@ export async function castSkill(
     });
 
     // 4. 更新
-    const { error: updateErr } = await supabase
-      .from("players")
-      .update({ cards: updatedCards })
-      .eq("id", playerId);
+    if (consumedCards.length > 0) {
+      const { error: updateErr } = await supabase
+        .from("players")
+        .update({ cards: updatedCards })
+        .eq("id", playerId);
 
-    if (updateErr) return { success: false, error: "更新卡牌狀態失敗: " + updateErr.message };
+      if (updateErr) return { success: false, error: "更新卡牌狀態失敗: " + updateErr.message };
+    }
 
     const { error: insertErr } = await supabase.from("skill_actions").insert({
       game_id: gameId,

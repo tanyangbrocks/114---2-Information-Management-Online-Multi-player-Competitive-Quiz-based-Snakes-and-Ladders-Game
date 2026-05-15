@@ -287,35 +287,7 @@ export function PlayClient({ params }: Props) {
 
 
 
-  useEffect(() => {
-    if (game?.phase === "settle" && self && gameId) {
-      if (settledRoundRef.current === game.current_round) return;
-      const card = self.cards.find((c) => c.round === game.current_round);
-      if (!card || card.is_used) return;
-      
-      settledRoundRef.current = game.current_round;
-      
-      const move = moveBySteps(self.position, card.points, {
-        spades: suitCounts.S,
-        clubs: suitCounts.C
-      });
 
-      // 檢查是否跌落且擁有紅心卡可抵銷
-      const moveDist = (card.points || 0) + suitCounts.S - suitCounts.C;
-      if (move.position < (self.position + Math.max(0, moveDist))) {
-        const hearts = self.cards.filter(c => !c.is_used && c.suit === 'H');
-        if (hearts.length > 0) {
-          setSnakeTarget({ position: move.position, starsGained: move.starsGained, cards: hearts });
-          return;
-        }
-      }
-      
-      // 延遲一下下再更新 DB，確保 phase 已經同步到所有客戶端且畫面已就緒
-      setTimeout(() => {
-        void performMove(move.position, move.starsGained);
-      }, 500);
-    }
-  }, [game?.phase, game?.current_round, self, gameId, reload, sendSignal, sendMoveDone, supabase, performMove, suitCounts.S, suitCounts.C]);
 
   const handleCastSkill = async (skill: AvailableSkill) => {
     if (!game || !self) return;
@@ -473,6 +445,43 @@ export function PlayClient({ params }: Props) {
                 </div>
               </div>
             )}
+          </MotionWrapper>
+        )}
+        
+        {isWaitingSettle && (
+          <MotionWrapper type="bounce" className="p-10 pudding-card !bg-white/90 border-4 border-milky-apricot shadow-2xl flex flex-col items-center gap-8 text-center my-6">
+            <div className="space-y-2">
+              <h3 className="text-3xl font-black text-milky-brown tracking-tighter">準備好前進了嗎？</h3>
+              <p className="text-milky-brown/60 font-bold">點擊下方按鈕開始播放移動動畫</p>
+            </div>
+            
+            <button 
+              onClick={() => {
+                if (settledRoundRef.current === game.current_round) return;
+                const card = self.cards.find((c) => c.round === game.current_round);
+                if (!card || card.is_used) return;
+
+                settledRoundRef.current = game.current_round;
+                const move = moveBySteps(self.position, card.points, {
+                  spades: suitCounts.S,
+                  clubs: suitCounts.C
+                });
+
+                // 檢查是否跌落且擁有紅心卡可抵銷
+                const moveDist = (card.points || 0) + suitCounts.S - suitCounts.C;
+                if (move.position < (self.position + Math.max(0, moveDist))) {
+                  const hearts = self.cards.filter(c => !c.is_used && c.suit === 'H');
+                  if (hearts.length > 0) {
+                    setSnakeTarget({ position: move.position, starsGained: move.starsGained, cards: hearts });
+                    return;
+                  }
+                }
+                void performMove(move.position, move.starsGained);
+              }}
+              className="pudding-button-primary text-2xl px-16 py-6 shadow-2xl bg-milky-apricot animate-bounce border-b-8 border-milky-brown/20"
+            >
+              🚀 開始前進！
+            </button>
           </MotionWrapper>
         )}
 
