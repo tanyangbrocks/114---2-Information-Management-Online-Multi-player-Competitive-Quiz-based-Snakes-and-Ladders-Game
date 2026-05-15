@@ -192,7 +192,13 @@ function PlayerToken({
   }, [player.position, phase, controls, player.predicted_steps]);
 
   // 初始渲染位置
-  const initialCoords = useMemo(() => getCellCoords(player.position), [player.position]);
+  // 初始渲染位置：在結算階段鎖定在移動前的位置，避免因資料更新導致瞬移
+  const initialCoords = useMemo(() => {
+    const pos = (phase === "settle" && lastPosRef.current !== player.position) 
+      ? lastPosRef.current 
+      : player.position;
+    return getCellCoords(pos);
+  }, [player.position, phase]);
   
   const offsetX = (index % 3 - 1) * 8;
   const offsetY = (Math.floor(index / 3) - 1) * 8;

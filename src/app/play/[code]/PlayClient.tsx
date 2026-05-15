@@ -297,10 +297,10 @@ export function PlayClient({ params }: Props) {
       let consumed: string[] = [];
       const counts = countSuits(availableCards);
       if (skill.actionType === "U-3") consumed = availableCards.map(c => c.id);
-      else if (skill.actionType === "S-1") consumed = [availableCards.find(c => c.suit === "S")?.id].filter(Boolean) as string[];
-      else if (skill.actionType === "S-2") consumed = availableCards.filter(c => c.suit === "S").slice(0, 2).map(c => c.id);
-      else if (skill.actionType === "C-1") consumed = [availableCards.find(c => c.suit === "C")?.id].filter(Boolean) as string[];
-      else if (skill.actionType === "C-2") consumed = availableCards.filter(c => c.suit === "C").slice(0, 2).map(c => c.id);
+      else if (skill.actionType === "S-1") consumed = [availableCards.find(c => c.suit === "S" && !c.is_used)?.id].filter(Boolean) as string[];
+      else if (skill.actionType === "S-2") consumed = availableCards.filter(c => c.suit === "S" && !c.is_used).slice(0, 2).map(c => c.id);
+      else if (skill.actionType === "C-1") consumed = [availableCards.find(c => c.suit === "C" && !c.is_used)?.id].filter(Boolean) as string[];
+      else if (skill.actionType === "C-2") consumed = availableCards.filter(c => c.suit === "C" && !c.is_used).slice(0, 2).map(c => c.id);
       else if (skill.actionType === "U-1") {
         const suitToUse = (["S", "C", "H", "D"] as const).find(s => counts[s] >= 3) || 
                           (["S", "C", "H"] as const).find(s => counts[s] >= 2 && counts.D >= 1);
@@ -653,10 +653,10 @@ export function PlayClient({ params }: Props) {
           <div className="flex flex-wrap items-center gap-10 text-milky-brown">
             <div className="flex items-center gap-4"><div className="h-12 w-12 rounded-[1.2rem] bg-milky-brown text-white flex items-center justify-center shadow-xl group-hover:rotate-6 transition-transform"><User className="h-6 w-6" /></div><div><p className="text-[10px] font-black uppercase tracking-[0.3em] text-milky-brown/40 leading-none mb-1">Adventurer</p><p className="text-2xl font-black tracking-tighter">{self.name}</p></div></div>
             <div className="flex gap-10">
-              <div><p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">POS</p><p className="text-2xl font-black tracking-tighter">{self.position}</p></div>
-              <div><p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">STARS</p><p className="text-2xl font-black text-milky-accent tracking-tighter">★ {self.stars}</p></div>
-              <div>
-                <p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">MODIFIER</p>
+              <div><p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">位置</p><p className="text-2xl font-black tracking-tighter">{self.position}</p></div>
+              <div><p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">星星</p><p className="text-2xl font-black text-milky-accent tracking-tighter">★ {self.stars}</p></div>
+              <div className="flex flex-col items-end">
+                <p className="text-[10px] font-black text-milky-brown/30 uppercase mb-1">步數加乘</p>
                 <p className={`text-2xl font-black tracking-tighter ${self.passive_modifiers >= 0 ? 'text-milky-brown' : 'text-milky-brown/60'}`}>
                   {self.passive_modifiers > 0 ? `+${self.passive_modifiers}` : self.passive_modifiers}
                 </p>

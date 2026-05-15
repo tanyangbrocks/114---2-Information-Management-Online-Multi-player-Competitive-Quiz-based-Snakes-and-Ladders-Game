@@ -92,11 +92,14 @@ export async function addBotToGame(gameId: string) {
         passive_modifiers: 0
       });
 
-    if (insertErr) throw insertErr;
+    if (insertErr) {
+      console.error("Bot Insertion Error:", insertErr);
+      throw new Error(`資料庫寫入失敗: ${insertErr.message}`);
+    }
 
     return { success: true };
   } catch (e) {
-    console.error(e);
+    console.error("addBotToGame Catch:", e);
     return { success: false, error: e instanceof Error ? e.message : "新增機器人失敗" };
   }
 }
