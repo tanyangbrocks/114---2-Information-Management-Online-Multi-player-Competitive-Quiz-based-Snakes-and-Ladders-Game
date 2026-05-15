@@ -19,7 +19,17 @@ function getCellCoords(n: number) {
   return { x: x * 10 + 5, y: y * 10 + 5 };
 }
 
-export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds = [], phase }: Props) {
+type Props = {
+  players: PlayerRow[];
+  selfId: string;
+  onPlayerClick?: (playerId: string) => void;
+  targetablePlayerIds?: string[];
+  phase: string;
+  manualTarget?: number | null;
+  onMoveComplete?: () => void;
+};
+
+export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds = [], phase, manualTarget, onMoveComplete }: Props) {
   const { buildZigzagGrid } = useSnakeLadderBoard();
   const grid = buildZigzagGrid();
 
@@ -89,6 +99,8 @@ export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds 
             onClick={() => onPlayerClick?.(p.id)}
             isTargetable={targetablePlayerIds.includes(p.id)}
             phase={phase}
+            manualTarget={p.id === selfId ? manualTarget : null}
+            onMoveComplete={onMoveComplete}
           />
         ))}
       </div>
@@ -163,53 +175,56 @@ function PlayerToken({
       const from = lastPosRef.current;
       const to = targetPos;
       
-      // 1. 計算「走步」路徑
-      const steps = player.predicted_steps || 0;
+      // 1. 計算「走步」路徑：逐格移動
       const steppingPath: number[] = [];
-      
-      if (steps !== 0) {
-        const direction = steps > 0 ? 1 : -1;
-        const absSteps = Math.abs(steps);
-        for (let i = 1; i <= absSteps; i++) {
-          steppingPath.push(bounceOverHundred(from + i * direction));
+      if (from !== to) {
+        // 我們根據 from 和 to 的關係來推算中間經過的格子
+        // 考慮 100 點回彈邏輯
+        let p = from;
+        const maxSteps = 20; // 安全閥
+        let count = 0;
+        
+        // 決定方向：如果 to > from 則向前走，否則向後走 (處理回彈)
+        const direction = (to > from) ? 1 : -1;
+        
+        while (p !== to && count < maxSteps) {
+          const next = bounceOverHundred(p + direction);
+          steppingPath.push(next);
+          p = next;
+          count++;
+          // 如果這格有電梯或電鰻，走步到此結束，接下來進入傳送階段
+          if (ESCALATORS.some(e => e[0] === p) || EELS.some(e => e[0] === p)) break;
         }
       }
 
-      // 2. 計算「傳送」路徑
-      const landingSpot = steppingPath.length > 0 ? steppingPath[steppingPath.length - 1] : from;
-      const { path: connectorPath } = applyConnectors(landingSpot);
+      // 2. 計算「傳送」路徑 (電梯/電鰻)
+      const lastStep = steppingPath.length > 0 ? steppingPath[steppingPath.length - 1] : from;
+      const { path: connectorPath } = applyConnectors(lastStep);
       
-      // 3. 組合完整路徑
-      const finalPath = [...steppingPath];
-      for (let i = 1; i < connectorPath.length; i++) {
-        finalPath.push(connectorPath[i]);
-      }
-      
-      if (to === 1 && finalPath[finalPath.length - 1] !== 1) {
-        if (finalPath[finalPath.length - 1] !== 100) finalPath.push(100);
-        finalPath.push(1);
-      } else if (finalPath.length === 0 || finalPath[finalPath.length - 1] !== to) {
-        finalPath.push(to);
+      // 3. 執行「走步」動畫：總共固定 1 秒
+      if (steppingPath.length > 0) {
+        const durationPerStep = 1 / steppingPath.length;
+        for (const cell of steppingPath) {
+          const coords = getCellCoords(cell);
+          await controls.start({
+            left: `${coords.x}%`,
+            top: `${coords.y}%`,
+            transition: { duration: durationPerStep, ease: "linear" }
+          });
+        }
       }
 
-      // 執行移動動畫
-      const steppingCount = steppingPath.length;
-      const durationPerStep = steppingCount > 0 ? 1 / steppingCount : 0.2;
-
-      for (let i = 0; i < finalPath.length; i++) {
-        const cell = finalPath[i];
-        const coords = getCellCoords(cell);
-        const isConnector = i >= steppingCount;
-        const duration = isConnector ? 1.0 : durationPerStep;
-        
-        await controls.start({
-          left: `${coords.x}%`,
-          top: `${coords.y}%`,
-          transition: { 
-            duration: duration, 
-            ease: isConnector ? "easeInOut" : "linear" 
-          }
-        });
+      // 4. 執行「傳送」動畫：總共固定 1 秒
+      if (connectorPath.length > 1) {
+        const durationPerSegment = 1 / (connectorPath.length - 1);
+        for (let i = 1; i < connectorPath.length; i++) {
+          const coords = getCellCoords(connectorPath[i]);
+          await controls.start({
+            left: `${coords.x}%`,
+            top: `${coords.y}%`,
+            transition: { duration: durationPerSegment, ease: "easeInOut" }
+          });
+        }
       }
 
       lastPosRef.current = to;
@@ -259,13 +274,20 @@ function PlayerToken({
         }}
       >
         {isSelf && (
-          <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white px-2 py-0.5 rounded-md shadow-lg border border-milky-beige">
-            <p className="text-[8px] font-black text-milky-brown whitespace-nowrap">ME</p>
+          <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white px-2 py-0.5 rounded-md shadow-lg border border-milky-beige z-[70]">
+            <p className="text-[8px] font-black text-milky-brown whitespace-nowrap">
+              {player.name.startsWith("[Bot] ") ? player.name.replace("[Bot] ", "").substring(0, 2) : player.name.substring(0, 2)}
+            </p>
           </div>
         )}
         {isTargetable && (
-          <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-milky-accent text-white px-2 py-0.5 rounded-full shadow-lg whitespace-nowrap text-[8px] font-black animate-bounce">
+          <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-milky-accent text-white px-2 py-0.5 rounded-full shadow-lg whitespace-nowrap text-[8px] font-black animate-bounce z-[70]">
             TARGET
+          </div>
+        )}
+        {!isSelf && !isTargetable && (
+          <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white/80 px-1.5 py-0.5 rounded shadow text-[7px] font-bold text-milky-brown whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
+            {player.name.startsWith("[Bot] ") ? player.name.replace("[Bot] ", "").substring(0, 2) : player.name.substring(0, 2)}
           </div>
         )}
       </div>

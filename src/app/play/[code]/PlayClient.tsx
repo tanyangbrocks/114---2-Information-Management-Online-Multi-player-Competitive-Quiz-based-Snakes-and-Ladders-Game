@@ -1,4 +1,5 @@
 "use client";
+import { cn } from "@/lib/cn";
 
 import { BoardGrid } from "@/components/BoardGrid";
 import { useCardDraw } from "@/hooks/useCardDraw";
@@ -165,6 +166,7 @@ export function PlayClient({ params }: Props) {
   const [cDirection, setCDirection] = useState<1 | -1 | null>(null);
   const [hasActedSkillState, setHasActedSkillState] = useState(false);
   const [localMoveTarget, setLocalMoveTarget] = useState<{ pos: number; stars: number } | null>(null);
+  const [isSkillUIVisible, setIsSkillUIVisible] = useState(true);
 
   const hasActedSkill = useMemo(() => {
     if (hasActedSkillState) return true;
@@ -600,8 +602,11 @@ export function PlayClient({ params }: Props) {
         )}
 
         {skillPreview && skillStage === "preview" && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-milky-brown/40 backdrop-blur-md">
-            <MotionWrapper type="bounce" className="w-full max-w-sm">
+          <div className={cn("fixed inset-0 z-[110] flex items-center justify-center p-4 bg-milky-brown/40 backdrop-blur-md transition-all duration-300", !isSkillUIVisible && "opacity-0 pointer-events-none")}>
+            <MotionWrapper type="bounce" className="w-full max-w-sm relative">
+              <button onClick={() => setIsSkillUIVisible(false)} className="absolute -top-12 right-0 flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-sm rounded-full text-white text-xs font-bold hover:bg-white/30 transition-all">
+                <SkipForward className="h-4 w-4 rotate-90" /> 暫時隱藏
+              </button>
               <div className="pudding-card shadow-2xl border-4 border-white text-center">
                  <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-milky-brown text-white shadow-xl"><Sparkles className="h-10 w-10" /></div>
                  <h3 className="text-3xl font-black text-milky-brown mb-3">{skillPreview.name}</h3>
@@ -629,7 +634,10 @@ export function PlayClient({ params }: Props) {
         )}
 
         {skillPreview && skillStage === "target" && (
-          <div className="fixed inset-0 z-[110] flex flex-col items-center justify-center p-4 bg-milky-brown/60 backdrop-blur-md">
+          <div className={cn("fixed inset-0 z-[110] flex flex-col items-center justify-center p-4 bg-milky-brown/60 backdrop-blur-md transition-all duration-300", !isSkillUIVisible && "opacity-0 pointer-events-none")}>
+             <button onClick={() => setIsSkillUIVisible(false)} className="absolute top-10 right-10 flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-sm rounded-full text-white text-xs font-bold hover:bg-white/30 transition-all">
+                <SkipForward className="h-4 w-4 rotate-90" /> 暫時隱藏
+             </button>
              <div className="mb-8 text-center">
                <h3 className="text-3xl font-black text-white mb-2">選擇技能目標</h3>
                <p className="text-white/60 font-bold">請點擊下方清單或棋盤上的玩家頭像</p>
@@ -658,8 +666,11 @@ export function PlayClient({ params }: Props) {
         )}
 
         {skillPreview && skillStage === "direction" && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-milky-brown/40 backdrop-blur-md">
-            <MotionWrapper type="bounce" className="w-full max-w-sm">
+          <div className={cn("fixed inset-0 z-[110] flex items-center justify-center p-4 bg-milky-brown/40 backdrop-blur-md transition-all duration-300", !isSkillUIVisible && "opacity-0 pointer-events-none")}>
+            <MotionWrapper type="bounce" className="w-full max-w-sm relative">
+              <button onClick={() => setIsSkillUIVisible(false)} className="absolute -top-12 right-0 flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-sm rounded-full text-white text-xs font-bold hover:bg-white/30 transition-all">
+                <SkipForward className="h-4 w-4 rotate-90" /> 暫時隱藏
+              </button>
               <div className="pudding-card shadow-2xl border-4 border-white text-center">
                  <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-milky-accent text-white shadow-xl"><Sparkles className="h-10 w-10" /></div>
                  <h3 className="text-3xl font-black text-milky-brown mb-3">選擇移動方向</h3>
@@ -681,6 +692,21 @@ export function PlayClient({ params }: Props) {
             </MotionWrapper>
           </div>
         )}
+
+        {/* 恢復按鈕：當選單被隱藏時顯示 */}
+        <AnimatePresence>
+          {!isSkillUIVisible && skillStage !== "idle" && (
+            <motion.button
+              initial={{ scale: 0, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0, opacity: 0, y: 20 }}
+              onClick={() => setIsSkillUIVisible(true)}
+              className="fixed bottom-24 right-6 z-[120] flex h-16 w-16 items-center justify-center rounded-3xl bg-milky-brown text-white shadow-2xl border-4 border-white"
+            >
+              <SkipForward className="h-8 w-8 -rotate-90" />
+            </motion.button>
+          )}
+        </AnimatePresence>
 
         <header className="pudding-card !p-6 relative overflow-hidden group">
           <div className="absolute top-0 right-0 h-1.5 w-full bg-gradient-to-r from-milky-apricot via-milky-accent to-milky-brown opacity-60" />
@@ -720,6 +746,14 @@ export function PlayClient({ params }: Props) {
           players={players} 
           selfId={self.id} 
           phase={game.phase}
+          manualTarget={localMoveTarget?.pos}
+          onMoveComplete={() => {
+            if (localMoveTarget && settledRoundRef.current !== game.current_round) {
+              settledRoundRef.current = game.current_round;
+              void performMove(localMoveTarget.pos, localMoveTarget.stars);
+              setLocalMoveTarget(null);
+            }
+          }}
           onPlayerClick={(targetId) => {
             if (skillStage === "target") {
               setSelectedTarget(targetId);
