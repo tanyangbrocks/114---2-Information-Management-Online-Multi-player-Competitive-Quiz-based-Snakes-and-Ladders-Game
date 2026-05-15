@@ -64,6 +64,21 @@ export async function resolveNextSkill(gameId: string, round: number) {
     await executeSkillEffect(supabase, action, players);
     await supabase.from("skill_actions").update({ status: "resolved" }).eq("id", action.id);
 
+    // 5. 重要：更新發動者的預計步數 (因為可能消耗了 S 或 C 牌)
+    if (caster) {
+        const { data: updatedCaster } = await supabase.from("players").select("*").eq("id", caster.id).single();
+        if (updatedCaster) {
+            const cards = updatedCaster.cards as GameCard[];
+            const activeCards = cards.filter(c => !c.is_used);
+            const suits = countSuits(activeCards);
+            const roundCard = cards.find(c => c.round === round);
+            if (roundCard) {
+                const newPredicted = Math.max(0, roundCard.points + suits.S - suits.C);
+                await supabase.from("players").update({ predicted_steps: newPredicted }).eq("id", caster.id);
+            }
+        }
+    }
+
     return { done: false };
   } catch (e) {
     console.error(e);

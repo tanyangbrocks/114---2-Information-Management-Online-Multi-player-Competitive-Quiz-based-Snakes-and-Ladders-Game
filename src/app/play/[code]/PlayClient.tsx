@@ -146,10 +146,16 @@ export function PlayClient({ params }: Props) {
 
           const card = drawForSlot(isCorrect ? 2 : 1, game.current_round);
           const newCards = [...self.cards, card];
+          // 計算預計步數：點數 + 步數加乘 (S) - 步數減少 (C)
+          const suits = countSuits(newCards.filter(c => !c.is_used));
+          const predicted = card.points + suits.S - suits.C;
 
           void supabase
             .from("players")
-            .update({ cards: newCards })
+            .update({ 
+              cards: newCards,
+              predicted_steps: Math.max(0, predicted)
+            })
             .eq("id", self.id)
             .then(() => {
               void reload();

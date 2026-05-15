@@ -454,18 +454,19 @@ export function HostGameClient({ params }: Props) {
                 className="pudding-button bg-milky-accent text-white hover:opacity-90 flex items-center gap-2 shadow-lg"
               >
                 {busy === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                開始技能處理
+                {skillActions.length > 0 ? "開始處理玩家技能" : "跳過技能處理直接結算"}
               </button>
             )}
             {game.phase === "skill" && (
               <div className="flex items-center gap-4">
+                {/* 只要有任何一個技能還沒 resolved/cancelled，就顯示仲裁中 */}
                 {skillActions.some(a => a.status === "pending" || a.status === "waiting_counter" || a.status === "ready") ? (
                   <div className="flex items-center gap-3 bg-white/80 border-2 border-milky-beige px-6 py-3 rounded-full shadow-sm">
                     <Loader2 className="h-5 w-5 text-milky-accent animate-spin" />
                     <span className="text-sm font-black text-milky-brown">技能仲裁中...</span>
                     {skillActions.some(a => a.status === "waiting_counter") && (
                         <span className="text-[10px] bg-milky-apricot text-white px-2 py-0.5 rounded-full animate-pulse ml-2">
-                            等待玩家反制中
+                            等待反制中
                         </span>
                     )}
                   </div>
