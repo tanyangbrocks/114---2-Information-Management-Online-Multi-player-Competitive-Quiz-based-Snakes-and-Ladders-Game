@@ -29,7 +29,7 @@ export async function resolveNextSkill(gameId: string, round: number) {
       .select("*")
       .eq("game_id", gameId)
       .eq("round", round)
-      .eq("status", "pending");
+      .in("status", ["pending", "ready"]);
 
     if (!players || !actions || actions.length === 0) return { done: true };
 
@@ -43,7 +43,7 @@ export async function resolveNextSkill(gameId: string, round: number) {
     const sortedActions = [...actions].sort((a, b) => {
       const rankA = rankedPlayers.findIndex(r => r.id === a.player_id);
       const rankB = rankedPlayers.findIndex(r => r.id === b.player_id);
-      return rankA - rankB; 
+      return rankA - rankB;
     });
 
     const action = sortedActions[0];
@@ -51,7 +51,8 @@ export async function resolveNextSkill(gameId: string, round: number) {
     const targetPlayer = action.target_player_id ? players.find(p => p.id === action.target_player_id) : null;
 
     // 3. 檢查是否有菱形反制機會 (針對型技能且對象有2張菱形)
-    if (targetPlayer && ["S-1", "D-1", "D-2", "C-2", "U-2"].includes(action.action_type)) {
+    const attackSkills: SkillActionType[] = ["S-1", "D-1", "D-2", "C-2", "U-2", "U-3"];
+    if (targetPlayer && attackSkills.includes(action.action_type)) {
       const diamonds = (targetPlayer.cards as GameCard[]).filter(c => !c.is_used && c.suit === "D");
       if (diamonds.length >= 2) {
         // 進入攔截階段，等待玩家回應
@@ -66,17 +67,17 @@ export async function resolveNextSkill(gameId: string, round: number) {
 
     // 5. 重要：更新發動者的預計步數 (因為可能消耗了 S 或 C 牌)
     if (caster) {
-        const { data: updatedCaster } = await supabase.from("players").select("*").eq("id", caster.id).single();
-        if (updatedCaster) {
-            const cards = updatedCaster.cards as GameCard[];
-            const activeCards = cards.filter(c => !c.is_used);
-            const suits = countSuits(activeCards);
-            const roundCard = cards.find(c => c.round === round);
-            if (roundCard) {
-                const newPredicted = Math.max(0, roundCard.points + suits.S - suits.C);
-                await supabase.from("players").update({ predicted_steps: newPredicted }).eq("id", caster.id);
-            }
+      const { data: updatedCaster } = await supabase.from("players").select("*").eq("id", caster.id).single();
+      if (updatedCaster) {
+        const cards = updatedCaster.cards as GameCard[];
+        const activeCards = cards.filter(c => !c.is_used);
+        const suits = countSuits(activeCards);
+        const roundCard = cards.find(c => c.round === round);
+        if (roundCard) {
+          const newPredicted = Math.max(0, roundCard.points + suits.S - suits.C);
+          await supabase.from("players").update({ predicted_steps: newPredicted }).eq("id", caster.id);
         }
+      }
     }
 
     return { done: false };
@@ -202,7 +203,7 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
           target.cards = tCards.map(c => c.id === dropId ? { ...c, is_used: true } : c);
         }
       }
-      
+
       // C-1: 自身前進或後退
       if (action.action_type === "C-1") {
         const dir = action.metadata?.direction || 1;
@@ -243,7 +244,7 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
       if (action.action_type === "U-3") {
         const effects: SkillActionType[] = ["S-1", "S-2", "C-1", "H-1", "U-1"];
         const randomEffect = effects[Math.floor(Math.random() * effects.length)];
-        
+
         if (randomEffect === "S-1") {
           const actualTarget = target || players.filter(p => p.id !== caster.id)[Math.floor(Math.random() * (players.length - 1))];
           if (actualTarget) {
@@ -271,26 +272,33 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
           if (nextLadder) caster.position = nextLadder[1];
         }
       }
-      
+
       await supabase.from("skill_actions").update({ status: "resolved" }).eq("id", action.id);
     }
 
-    // 5. 執行基礎移動結算 (根據預計步數)
+    // 5. 執行基礎移動結算 (根據本回合卡牌點數 + 被動修飾重新計算，避免 predicted_steps 不準)
     for (const p of Array.from(playerMap.values())) {
-      const steps = p.predicted_steps || 0;
-      if (steps !== 0 || p.position === 100) {
+      // 重新從當前卡牌狀態計算，確保精確性
+      const pCards = p.cards as GameCard[];
+      const roundCard = pCards.find((c: GameCard) => c.round === round && !c.is_used);
+      const activeCards = pCards.filter((c: GameCard) => !c.is_used);
+      const suits = countSuits(activeCards);
+      const basePoints = roundCard?.points ?? 0;
+      const steps = Math.max(0, basePoints + suits.S - suits.C);
+
+      if (steps > 0 || p.position === 100) {
         // 檢查玩家是否有紅心牌 (保命牌)
-        const heartCard = p.cards.find((c: GameCard) => !c.is_used && c.suit === "H");
+        const heartCard = pCards.find((c: GameCard) => !c.is_used && c.suit === "H");
         const hasHeart = !!heartCard;
 
         // 執行移動 (傳入 ignoreEel 為 hasHeart)
         const { position: nextPos, starsGained, usedIgnoreEel } = moveBySteps(p.position, steps, {
           ignoreEel: hasHeart
         });
-        
+
         // 如果移動過程中真的觸發了保命 (遇到了電鰻但被忽略)，則消耗那張紅心牌
         if (usedIgnoreEel && heartCard) {
-          heartCard.is_used = true;
+          (heartCard as GameCard).is_used = true;
         }
 
         p.position = nextPos;
@@ -302,13 +310,13 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
     for (const p of Array.from(playerMap.values())) {
       const originalPlayer = players.find(op => op.id === p.id);
       const cardsModified = JSON.stringify(p.cards) !== JSON.stringify(originalPlayer?.cards);
-      
-      const updatePayload: Partial<PlayerRow> = { 
+
+      const updatePayload: Partial<PlayerRow> = {
         position: p.position,
         stars: p.stars,
         predicted_steps: 0 // 結算後重置
       };
-      
+
       if (cardsModified) {
         updatePayload.cards = p.cards;
       }

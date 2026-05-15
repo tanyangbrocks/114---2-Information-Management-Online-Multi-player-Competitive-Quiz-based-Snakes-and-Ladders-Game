@@ -7,15 +7,12 @@ import { useEffect, useMemo, useRef } from "react";
 import { ESCALATORS, EELS, bounceOverHundred, applyConnectors } from "@/lib/game/boardEngine";
 import { motion, useAnimation } from "framer-motion";
 
-
-
 /** 計算格子在 10x10 棋盤上的百分比座標 (x, y)，回傳值為 0-100 */
 function getCellCoords(n: number) {
   const r = Math.floor((n - 1) / 10);
   const c = (n - 1) % 10;
   const x = r % 2 === 0 ? c : 9 - c;
   const y = 9 - r;
-  // 回傳中心點座標
   return { x: x * 10 + 5, y: y * 10 + 5 };
 }
 
@@ -28,9 +25,21 @@ type Props = {
   currentRound: number;
   manualTarget?: number | null;
   onMoveComplete?: () => void;
+  /** 動畫出發點：在 reveal 時快照的自身位置，讓 settle 時能從正確位置播動畫 */
+  animateFromPos?: number | null;
 };
 
-export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds = [], phase, currentRound, manualTarget, onMoveComplete }: Props) {
+export function BoardGrid({
+  players,
+  selfId,
+  onPlayerClick,
+  targetablePlayerIds = [],
+  phase,
+  currentRound,
+  manualTarget,
+  onMoveComplete,
+  animateFromPos,
+}: Props) {
   const { buildZigzagGrid } = useSnakeLadderBoard();
   const grid = buildZigzagGrid();
 
@@ -39,18 +48,16 @@ export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds 
       {/* 棋盤底層 */}
       <div className="grid grid-cols-10 gap-1 sm:gap-1.5 h-full w-full">
         {grid.flatMap((row) =>
-          row.map((cell) => {
-            return (
-              <div
-                key={cell}
-                className="relative flex h-full w-full items-center justify-center rounded-xl border-2 border-milky-beige/50 bg-white/40"
-              >
-                <span className="text-[10px] font-black text-milky-brown/20 absolute top-1 left-1.5">
-                  {cell}
-                </span>
-              </div>
-            );
-          })
+          row.map((cell) => (
+            <div
+              key={cell}
+              className="relative flex h-full w-full items-center justify-center rounded-xl border-2 border-milky-beige/50 bg-white/40"
+            >
+              <span className="text-[10px] font-black text-milky-brown/20 absolute top-1 left-1.5">
+                {cell}
+              </span>
+            </div>
+          ))
         )}
       </div>
 
@@ -103,6 +110,7 @@ export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds 
             currentRound={currentRound}
             manualTarget={p.id === selfId ? manualTarget : null}
             onMoveComplete={onMoveComplete}
+            animateFromPos={p.id === selfId ? animateFromPos : null}
           />
         ))}
       </div>
@@ -111,33 +119,25 @@ export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds 
 }
 
 const TOKEN_COLORS = [
-  "#FF6B6B", // 珊瑚紅
-  "#4ECDC4", // 薄荷綠
-  "#45B7D1", // 冰晶藍
-  "#96CEB4", // 灰綠
-  "#FFEEAD", // 奶油黃
-  "#D4A5A5", // 藕粉
-  "#9B59B6", // 紫羅蘭
-  "#F1C40F", // 明黃
-  "#E67E22", // 亮橘
-  "#2ECC71", // 寶石綠
-  "#3498DB", // 湛藍
-  "#E74C3C", // 朱紅
+  "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEEAD",
+  "#D4A5A5", "#9B59B6", "#F1C40F", "#E67E22", "#2ECC71",
+  "#3498DB", "#E74C3C",
 ];
 
-function PlayerToken({ 
-  player, 
-  isSelf, 
-  index, 
-  onClick, 
+function PlayerToken({
+  player,
+  isSelf,
+  index,
+  onClick,
   isTargetable,
   phase,
   currentRound,
   manualTarget,
-  onMoveComplete
-}: { 
-  player: PlayerRow; 
-  isSelf: boolean; 
+  onMoveComplete,
+  animateFromPos,
+}: {
+  player: PlayerRow;
+  isSelf: boolean;
   index: number;
   onClick?: () => void;
   isTargetable?: boolean;
@@ -145,38 +145,52 @@ function PlayerToken({
   currentRound: number;
   manualTarget?: number | null;
   onMoveComplete?: () => void;
+  animateFromPos?: number | null;
 }) {
   const controls = useAnimation();
-  // 紀錄上一個確實渲染過的位置
   const lastPosRef = useRef(player.position);
 
+  // 在準備/題目/回合間隙，靜默更新棋子位置為最新值
   useEffect(() => {
-    // 只有在準備階段、題目階段、或回合間隙，才安靜地同步位置起點
-    // 這樣在 reveal 或 skill 階段產生的位移，就會在 settle 時被動畫呈現
     if (phase === "lobby" || phase === "question" || phase === "between_rounds") {
       lastPosRef.current = player.position;
       const coords = getCellCoords(player.position);
-      controls.set({
-        left: `${coords.x}%`,
-        top: `${coords.y}%`
-      });
+      controls.set({ left: `${coords.x}%`, top: `${coords.y}%` });
     }
   }, [phase, player.position, controls]);
 
   const isMovingRef = useRef(false);
-  const processedPosRef = useRef<{ round: number; pos: number } | null>(null);
+  // 紀錄「這回合的這個目標位置」是否已播過動畫，避免 effect 重複觸發
+  const processedRef = useRef<{ round: number; pos: number } | null>(null);
 
   useEffect(() => {
-    // 當進入 settle 或 skill 階段，且 (位置與上次紀錄不同 或 有手動目標)，且當前不在動畫中
-    const isAlreadyProcessed = processedPosRef.current?.round === currentRound && processedPosRef.current?.pos === player.position;
-    const hasNewPos = player.position !== lastPosRef.current;
-    const hasManual = manualTarget !== null && manualTarget !== undefined && manualTarget !== lastPosRef.current;
+    const isAlreadyProcessed =
+      processedRef.current?.round === currentRound &&
+      processedRef.current?.pos === player.position;
 
-    if ((phase === "settle" || phase === "skill") && (hasNewPos || hasManual) && !isMovingRef.current && !isAlreadyProcessed) {
+    // 核心修復：優先使用外部傳入的 animateFromPos 作為出發點
+    // 這保證即使組件在 reveal 期間重新掛載，也能從正確位置播動畫
+    const fromPos =
+      animateFromPos != null && animateFromPos !== player.position
+        ? animateFromPos
+        : lastPosRef.current;
+
+    const hasNewPos = player.position !== fromPos;
+    const hasManual =
+      manualTarget != null && manualTarget !== fromPos;
+
+    if (
+      (phase === "settle" || phase === "skill") &&
+      (hasNewPos || hasManual) &&
+      !isMovingRef.current &&
+      !isAlreadyProcessed
+    ) {
       if (phase === "settle") {
-        processedPosRef.current = { round: currentRound, pos: player.position };
+        processedRef.current = { round: currentRound, pos: player.position };
       }
-      void animateMovement(hasManual ? manualTarget : player.position);
+      // 在播動畫前，把 lastPosRef 對齊實際出發點
+      lastPosRef.current = fromPos;
+      void animateMovement(hasManual ? manualTarget! : player.position);
     }
 
     async function animateMovement(targetPos: number) {
@@ -184,21 +198,17 @@ function PlayerToken({
       const from = lastPosRef.current;
       const to = targetPos;
 
-      // [視覺防震]：在動畫開始前，強迫將棋子鎖定在「視覺出發點」，防止延遲造成的瞬移
+      // 視覺防震：強制把棋子定位在出發點，防止瞬移
       const startCoords = getCellCoords(from);
-      controls.set({
-        left: `${startCoords.x}%`,
-        top: `${startCoords.y}%`
-      });
-      
+      controls.set({ left: `${startCoords.x}%`, top: `${startCoords.y}%` });
+
       const steppingPath: number[] = [];
       const connectorPaths: number[][] = [];
-      
+
       let p = from;
-      const maxSteps = 50; 
+      const maxSteps = 50;
       let count = 0;
 
-      // 模擬從起點到終點的全路徑
       const direction = to > from ? 1 : -1;
       while (p !== to && count < maxSteps) {
         count++;
@@ -206,7 +216,7 @@ function PlayerToken({
         steppingPath.push(next);
         p = next;
 
-        // 只有當「這格機關的終點」剛好就是我們的「最終目的地」時，才在這裡中斷走步並轉入傳送
+        // 若路途中遇到傳送機關且終點就是最終目的地，轉入傳送動畫
         const { position } = applyConnectors(p);
         if (position === to && p !== to) {
           connectorPaths.push(applyConnectors(p).path);
@@ -215,7 +225,7 @@ function PlayerToken({
         }
       }
 
-      // 執行「走步」動畫：總共 1 秒
+      // 走步動畫：總計 1 秒
       if (steppingPath.length > 0) {
         const durationPerStep = 1 / steppingPath.length;
         for (const cell of steppingPath) {
@@ -223,22 +233,25 @@ function PlayerToken({
           await controls.start({
             left: `${coords.x}%`,
             top: `${coords.y}%`,
-            transition: { duration: durationPerStep, ease: "linear" }
+            transition: { duration: durationPerStep, ease: "linear" },
           });
         }
       }
 
-      // 執行「傳送」動畫：總共 1 秒 (不論有多少段)
+      // 傳送動畫：總計 1 秒
       if (connectorPaths.length > 0) {
-        const totalSegments = connectorPaths.reduce((acc, path) => acc + (path.length - 1), 0);
-        const durationPerSegment = 1 / totalSegments;
+        const totalSegments = connectorPaths.reduce(
+          (acc, path) => acc + (path.length - 1),
+          0
+        );
+        const durationPerSegment = totalSegments > 0 ? 1 / totalSegments : 1;
         for (const path of connectorPaths) {
           for (let i = 1; i < path.length; i++) {
             const coords = getCellCoords(path[i]);
             await controls.start({
               left: `${coords.x}%`,
               top: `${coords.y}%`,
-              transition: { duration: durationPerSegment, ease: "easeInOut" }
+              transition: { duration: durationPerSegment, ease: "easeInOut" },
             });
           }
         }
@@ -248,17 +261,17 @@ function PlayerToken({
       isMovingRef.current = false;
       onMoveComplete?.();
     }
-  }, [phase, player.position, manualTarget, controls, onMoveComplete, currentRound]);
+  }, [phase, player.position, manualTarget, controls, onMoveComplete, currentRound, animateFromPos]);
 
-  // 初始渲染位置
-  // 初始渲染位置：在結算階段鎖定在移動前的位置，避免因資料更新導致瞬移
+  // 初始渲染位置：在結算階段鎖定在移動前的位置
   const initialCoords = useMemo(() => {
-    const pos = (phase === "settle" && lastPosRef.current !== player.position) 
-      ? lastPosRef.current 
-      : player.position;
+    const pos =
+      phase === "settle" && animateFromPos != null && animateFromPos !== player.position
+        ? animateFromPos
+        : player.position;
     return getCellCoords(pos);
-  }, [player.position, phase]);
-  
+  }, [player.position, phase, animateFromPos]);
+
   const offsetX = (index % 3 - 1) * 8;
   const offsetY = (Math.floor(index / 3) - 1) * 8;
 
@@ -267,16 +280,18 @@ function PlayerToken({
       animate={controls}
       initial={{
         left: `${initialCoords.x}%`,
-        top: `${initialCoords.y}%`
+        top: `${initialCoords.y}%`,
       }}
       className={cn(
         "absolute h-[10%] w-[10%] flex items-center justify-center",
-        isTargetable ? "pointer-events-auto cursor-pointer scale-110 z-[60]" : "pointer-events-none"
+        isTargetable
+          ? "pointer-events-auto cursor-pointer scale-110 z-[60]"
+          : "pointer-events-none"
       )}
-      style={{ 
+      style={{
         zIndex: isSelf ? 50 : 10 + index,
         x: `calc(-50% + ${offsetX}px)`,
-        y: `calc(-50% + ${offsetY}px)`
+        y: `calc(-50% + ${offsetY}px)`,
       }}
       onClick={onClick}
     >
@@ -287,13 +302,17 @@ function PlayerToken({
           isTargetable && "ring-4 ring-milky-accent animate-pulse"
         )}
         style={{
-          backgroundColor: isTargetable ? undefined : TOKEN_COLORS[index % TOKEN_COLORS.length]
+          backgroundColor: isTargetable
+            ? undefined
+            : TOKEN_COLORS[index % TOKEN_COLORS.length],
         }}
       >
         {isSelf && (
           <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white px-2 py-0.5 rounded-md shadow-lg border border-milky-beige z-[70]">
             <p className="text-[8px] font-black text-milky-brown whitespace-nowrap">
-              {player.name.startsWith("[Bot] ") ? player.name.replace("[Bot] ", "").substring(0, 2) : player.name.substring(0, 2)}
+              {player.name.startsWith("[Bot] ")
+                ? player.name.replace("[Bot] ", "").substring(0, 2)
+                : player.name.substring(0, 2)}
             </p>
           </div>
         )}
@@ -304,12 +323,12 @@ function PlayerToken({
         )}
         {!isSelf && !isTargetable && (
           <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white/80 px-1.5 py-0.5 rounded shadow text-[7px] font-bold text-milky-brown whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
-            {player.name.startsWith("[Bot] ") ? player.name.replace("[Bot] ", "").substring(0, 2) : player.name.substring(0, 2)}
+            {player.name.startsWith("[Bot] ")
+              ? player.name.replace("[Bot] ", "").substring(0, 2)
+              : player.name.substring(0, 2)}
           </div>
         )}
       </div>
     </motion.div>
   );
 }
-
-

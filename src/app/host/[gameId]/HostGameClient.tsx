@@ -159,9 +159,14 @@ export function HostGameClient({ params }: Props) {
         
         if (hasPending && !isWaiting && busy === null) {
             const timer = setTimeout(async () => {
-                await resolveNextSkill(game.id, game.current_round);
-                await reload();
-                await sendSignal();
+                setBusy("bot");
+                try {
+                    await resolveNextSkill(game.id, game.current_round);
+                    await reload();
+                    await sendSignal();
+                } finally {
+                    setBusy(null);
+                }
             }, 1000); 
             return () => clearTimeout(timer);
         } else if (!hasPending && !isWaiting) {
