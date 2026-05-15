@@ -16,6 +16,21 @@ import { moveBySteps } from "@/lib/game/boardEngine";
 import { castSkill } from "@/app/actions/skills";
 import { respondToSkillCounter } from "@/app/actions/resolveSkills";
 
+export const TOKEN_COLORS = [
+  "#FF6B6B", 
+  "#4ECDC4", 
+  "#45B7D1", 
+  "#96CEB4", 
+  "#FFEEAD", 
+  "#D4A5A5", 
+  "#9B59B6", 
+  "#F1C40F", 
+  "#E67E22", 
+  "#2ECC71", 
+  "#3498DB", 
+  "#E74C3C", 
+];
+
 type Props = {
   params: Promise<{ code: string }>;
 };
@@ -136,7 +151,6 @@ export function PlayClient({ params }: Props) {
           .then(() => {
             void reload();
             void sendSignal();
-            // 獨立計時器，確保 1.5 秒後清除
             setTimeout(() => setAnswerFeedback(null), 1500);
           });
       }
@@ -150,6 +164,7 @@ export function PlayClient({ params }: Props) {
   const [selectedTarget, setSelectedTarget] = useState<string>("");
   const [cDirection, setCDirection] = useState<1 | -1 | null>(null);
   const [hasActedSkillState, setHasActedSkillState] = useState(false);
+  const [localMoveTarget, setLocalMoveTarget] = useState<{ pos: number; stars: number } | null>(null);
 
   const hasActedSkill = useMemo(() => {
     if (hasActedSkillState) return true;
@@ -177,9 +192,7 @@ export function PlayClient({ params }: Props) {
     };
   }, [self, game]);
 
-  // 移除資料庫寫入邏輯，改為純前端顯示
   useEffect(() => {
-    // 這裡不再呼叫 supabase.update，因為欄位不存在
   }, [predictedSteps, passiveModifier]);
 
 
@@ -281,35 +294,61 @@ export function PlayClient({ params }: Props) {
     }
   }, [self, game, supabase, reload, sendMoveDone, sendSignal]);
 
-
-
-
-
   const handleCastSkill = async (skill: AvailableSkill) => {
     if (!game || !self) return;
-    const availableCards = getAvailableCards(self.cards);
     setSkillBusy(true);
     try {
       let consumed: string[] = [];
+      const availableCards = getAvailableCards(self.cards);
       const counts = countSuits(availableCards);
-      if (skill.actionType === "U-3") consumed = availableCards.map(c => c.id);
-      else if (skill.actionType === "S-1") consumed = [availableCards.find(c => c.suit === "S" && !c.is_used)?.id].filter(Boolean) as string[];
-      else if (skill.actionType === "S-2") consumed = availableCards.filter(c => c.suit === "S" && !c.is_used).slice(0, 2).map(c => c.id);
-      else if (skill.actionType === "C-1") consumed = [availableCards.find(c => c.suit === "C" && !c.is_used)?.id].filter(Boolean) as string[];
-      else if (skill.actionType === "C-2") consumed = availableCards.filter(c => c.suit === "C" && !c.is_used).slice(0, 2).map(c => c.id);
-      else if (skill.actionType === "U-1") {
+      
+      // 根據技能類型，精確抓取對應花色的卡片 ID
+      if (skill.actionType === "U-3") {
+        consumed = availableCards.map(c => c.id);
+      } else if (skill.actionType === "S-1") {
+        const card = availableCards.find(c => c.suit === "S");
+        if (card) consumed = [card.id];
+      } else if (skill.actionType === "S-2") {
+        const matching = availableCards.filter(c => c.suit === "S").slice(0, 2);
+        consumed = matching.map(c => c.id);
+        if (consumed.length < 2) {
+          const dCard = availableCards.find(c => c.suit === "D" && !consumed.includes(c.id));
+          if (dCard) consumed.push(dCard.id);
+        }
+      } else if (skill.actionType === "C-1") {
+        const card = availableCards.find(c => c.suit === "C");
+        if (card) consumed = [card.id];
+      } else if (skill.actionType === "C-2") {
+        const matching = availableCards.filter(c => c.suit === "C").slice(0, 2);
+        consumed = matching.map(c => c.id);
+        if (consumed.length < 2) {
+          const dCard = availableCards.find(c => c.suit === "D" && !consumed.includes(c.id));
+          if (dCard) consumed.push(dCard.id);
+        }
+      } else if (skill.actionType === "U-1") {
         const suitToUse = (["S", "C", "H", "D"] as const).find(s => counts[s] >= 3) || 
                           (["S", "C", "H"] as const).find(s => counts[s] >= 2 && counts.D >= 1);
         if (suitToUse) {
-           consumed = availableCards.filter(c => c.suit === suitToUse).slice(0, 3).map(c => c.id);
-           if (consumed.length < 3 && counts.D >= 1) {
-              const dCard = availableCards.find(c => c.suit === "D" && !consumed.includes(c.id));
-              if (dCard) consumed.push(dCard.id);
-           }
+          const matching = availableCards.filter(c => c.suit === suitToUse).slice(0, 3);
+          consumed = matching.map(c => c.id);
+          if (consumed.length < 3 && counts.D >= 1) {
+            const dCard = availableCards.find(c => c.suit === "D" && !consumed.includes(c.id));
+            if (dCard) consumed.push(dCard.id);
+          }
         }
       } else if (skill.actionType === "U-2") {
         const suits = ["S", "C", "H", "D"] as const;
         consumed = suits.map(s => availableCards.find(c => c.suit === s)?.id).filter(Boolean) as string[];
+        if (consumed.length < 4 && counts.D >= 2) {
+           // 如果有兩張菱形，一張可以當 D，另一張可以補齊缺失
+           const dCards = availableCards.filter(c => c.suit === "D");
+           if (dCards.length >= 2) {
+             const missingSuit = suits.find(s => !availableCards.some(c => c.suit === s));
+             if (missingSuit) {
+               consumed.push(dCards[1].id); // 使用第二張菱形補齊
+             }
+           }
+        }
       }
 
       const res = await castSkill(game.id, game.current_round, self.id, skill.actionType, consumed, selectedTarget || undefined, cDirection ? { direction: cDirection } : undefined);
@@ -357,7 +396,10 @@ export function PlayClient({ params }: Props) {
   const isWaitingReveal = game.phase === "question" && !!self.answers[roundKey];
   const isShowingReveal = game.phase === "reveal";
   const isSkillPhase = game.phase === "skill";
-  const isWaitingSettle = game.phase === "settle" && !self.cards.find(c => c.round === game.current_round)?.is_used;
+  const isWaitingSettle = game.phase === "settle" && 
+                          !self.cards.find(c => c.round === game.current_round)?.is_used && 
+                          !localMoveTarget &&
+                          settledRoundRef.current !== game.current_round;
   const isCounterPhase = !!pendingCounter || !!snakeTarget;
 
   const currentRoundCard = self.cards.find(c => c.round === game.current_round);
@@ -457,13 +499,11 @@ export function PlayClient({ params }: Props) {
                 const card = self.cards.find((c) => c.round === game.current_round);
                 if (!card || card.is_used) return;
 
-                settledRoundRef.current = game.current_round;
                 const move = moveBySteps(self.position, card.points, {
                   spades: suitCounts.S,
                   clubs: suitCounts.C
                 });
 
-                // 檢查是否跌落且擁有紅心卡可抵銷
                 const moveDist = (card.points || 0) + suitCounts.S - suitCounts.C;
                 if (move.position < (self.position + Math.max(0, moveDist))) {
                   const hearts = self.cards.filter(c => !c.is_used && c.suit === 'H');
@@ -472,7 +512,8 @@ export function PlayClient({ params }: Props) {
                     return;
                   }
                 }
-                void performMove(move.position, move.starsGained);
+                
+                setLocalMoveTarget({ pos: move.position, stars: move.starsGained });
               }}
               className="pudding-button-primary text-2xl px-16 py-6 shadow-2xl bg-milky-apricot animate-bounce border-b-8 border-milky-brown/20"
             >
@@ -558,7 +599,6 @@ export function PlayClient({ params }: Props) {
           </div>
         )}
 
-        {/* 技能流程：預覽與確認階段 */}
         {skillPreview && skillStage === "preview" && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-milky-brown/40 backdrop-blur-md">
             <MotionWrapper type="bounce" className="w-full max-w-sm">
@@ -588,7 +628,6 @@ export function PlayClient({ params }: Props) {
           </div>
         )}
 
-        {/* 技能流程：對象選擇階段 */}
         {skillPreview && skillStage === "target" && (
           <div className="fixed inset-0 z-[110] flex flex-col items-center justify-center p-4 bg-milky-brown/60 backdrop-blur-md">
              <div className="mb-8 text-center">
@@ -618,7 +657,6 @@ export function PlayClient({ params }: Props) {
           </div>
         )}
 
-        {/* 技能流程：方向選擇階段 */}
         {skillPreview && skillStage === "direction" && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-milky-brown/40 backdrop-blur-md">
             <MotionWrapper type="bounce" className="w-full max-w-sm">

@@ -96,13 +96,30 @@ export function BoardGrid({ players, selfId, onPlayerClick, targetablePlayerIds 
   );
 }
 
+const TOKEN_COLORS = [
+  "#FF6B6B", // 珊瑚紅
+  "#4ECDC4", // 薄荷綠
+  "#45B7D1", // 冰晶藍
+  "#96CEB4", // 灰綠
+  "#FFEEAD", // 奶油黃
+  "#D4A5A5", // 藕粉
+  "#9B59B6", // 紫羅蘭
+  "#F1C40F", // 明黃
+  "#E67E22", // 亮橘
+  "#2ECC71", // 寶石綠
+  "#3498DB", // 湛藍
+  "#E74C3C", // 朱紅
+];
+
 function PlayerToken({ 
   player, 
   isSelf, 
   index, 
   onClick, 
   isTargetable,
-  phase
+  phase,
+  manualTarget,
+  onMoveComplete
 }: { 
   player: PlayerRow; 
   isSelf: boolean; 
@@ -110,6 +127,8 @@ function PlayerToken({
   onClick?: () => void;
   isTargetable?: boolean;
   phase?: string;
+  manualTarget?: number | null;
+  onMoveComplete?: () => void;
 }) {
   const controls = useAnimation();
   // 紀錄上一個確實渲染過的位置
@@ -131,15 +150,18 @@ function PlayerToken({
   const isMovingRef = useRef(false);
 
   useEffect(() => {
-    // 當進入 settle 或 skill 階段，且位置與上次紀錄不同，且當前不在動畫中
-    if ((phase === "settle" || phase === "skill") && player.position !== lastPosRef.current && !isMovingRef.current) {
-      void animateMovement();
+    // 當進入 settle 或 skill 階段，且 (位置與上次紀錄不同 或 有手動目標)，且當前不在動畫中
+    const hasNewPos = player.position !== lastPosRef.current;
+    const hasManual = manualTarget !== null && manualTarget !== undefined && manualTarget !== lastPosRef.current;
+
+    if ((phase === "settle" || phase === "skill") && (hasNewPos || hasManual) && !isMovingRef.current) {
+      void animateMovement(hasManual ? manualTarget : player.position);
     }
 
-    async function animateMovement() {
+    async function animateMovement(targetPos: number) {
       isMovingRef.current = true;
       const from = lastPosRef.current;
-      const to = player.position;
+      const to = targetPos;
       
       // 1. 計算「走步」路徑
       const steps = player.predicted_steps || 0;
@@ -192,8 +214,9 @@ function PlayerToken({
 
       lastPosRef.current = to;
       isMovingRef.current = false;
+      onMoveComplete?.();
     }
-  }, [player.position, phase, controls]);
+  }, [player.position, phase, controls, manualTarget, onMoveComplete, player.predicted_steps]);
 
   // 初始渲染位置
   // 初始渲染位置：在結算階段鎖定在移動前的位置，避免因資料更新導致瞬移
@@ -228,9 +251,12 @@ function PlayerToken({
       <div
         className={cn(
           "h-5 w-5 sm:h-6 sm:w-6 rounded-full border-2 border-white shadow-xl transition-transform",
-          isSelf ? "bg-milky-brown ring-4 ring-white/50 scale-125 z-50" : "bg-white",
-          isTargetable && "ring-4 ring-milky-accent animate-pulse bg-milky-accent/20"
+          isSelf ? "ring-4 ring-white/50 scale-125 z-50" : "ring-1 ring-black/10",
+          isTargetable && "ring-4 ring-milky-accent animate-pulse"
         )}
+        style={{
+          backgroundColor: isTargetable ? undefined : TOKEN_COLORS[index % TOKEN_COLORS.length]
+        }}
       >
         {isSelf && (
           <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white px-2 py-0.5 rounded-md shadow-lg border border-milky-beige">
