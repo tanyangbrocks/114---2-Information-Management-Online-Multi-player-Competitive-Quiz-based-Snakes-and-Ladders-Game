@@ -8,8 +8,12 @@ function randomInt(min: number, max: number): number {
 }
 
 function newId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
+  try {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+      return crypto.randomUUID();
+    }
+  } catch (e) {
+    // Ignore and fallback
   }
   return `card_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
