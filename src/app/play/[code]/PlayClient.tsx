@@ -137,23 +137,38 @@ export function PlayClient({ params }: Props) {
         const choice = self.answers[roundKey];
         if (!choice) return;
 
-        const cfg = game.rounds_config[game.current_round - 1];
-        if (!cfg) return;
-        const isCorrect = cfg.answer === choice;
-        setAnswerFeedback(isCorrect ? "O" : "X");
+        
+        if (choice) {
+          const cfg = game.rounds_config[game.current_round - 1];
+          if (!cfg) return;
+          const isCorrect = cfg.answer === choice;
+          setAnswerFeedback(isCorrect ? "O" : "X");
 
-        const card = drawForSlot(isCorrect ? 2 : 1, game.current_round);
-        const newCards = [...self.cards, card];
+          const card = drawForSlot(isCorrect ? 2 : 1, game.current_round);
+          const newCards = [...self.cards, card];
 
-        void supabase
-          .from("players")
-          .update({ cards: newCards })
-          .eq("id", self.id)
-          .then(() => {
-            void reload();
-            void sendSignal();
-            setTimeout(() => setAnswerFeedback(null), 1500);
-          });
+          void supabase
+            .from("players")
+            .update({ cards: newCards })
+            .eq("id", self.id)
+            .then(() => {
+              void reload();
+              void sendSignal();
+              setTimeout(() => setAnswerFeedback(null), 1500);
+            });
+        } else {
+          // 未作答處理：自動抽錯題卡
+          const card = drawForSlot(game.current_round, false);
+          const newCards = [...self.cards, card];
+          void supabase
+            .from("players")
+            .update({ cards: newCards })
+            .eq("id", self.id)
+            .then(() => {
+              void reload();
+              void sendSignal();
+            });
+        }
       }
     }
   }, [game?.phase, game?.current_round, game?.rounds_config, self, gameId, drawForSlot, reload, sendSignal, supabase]);
@@ -193,10 +208,6 @@ export function PlayClient({ params }: Props) {
       suitCounts: counts
     };
   }, [self, game]);
-
-  useEffect(() => {
-  }, [predictedSteps, passiveModifier]);
-
 
   const availableSkills = useMemo(() => {
     if (!self) return [];
@@ -304,7 +315,6 @@ export function PlayClient({ params }: Props) {
       const availableCards = getAvailableCards(self.cards);
       const counts = countSuits(availableCards);
       
-      // 根據技能類型，精確抓取對應花色的卡片 ID
       if (skill.actionType === "U-3") {
         consumed = availableCards.map(c => c.id);
       } else if (skill.actionType === "S-1") {
@@ -342,12 +352,11 @@ export function PlayClient({ params }: Props) {
         const suits = ["S", "C", "H", "D"] as const;
         consumed = suits.map(s => availableCards.find(c => c.suit === s)?.id).filter(Boolean) as string[];
         if (consumed.length < 4 && counts.D >= 2) {
-           // 如果有兩張菱形，一張可以當 D，另一張可以補齊缺失
            const dCards = availableCards.filter(c => c.suit === "D");
            if (dCards.length >= 2) {
              const missingSuit = suits.find(s => !availableCards.some(c => c.suit === s));
              if (missingSuit) {
-               consumed.push(dCards[1].id); // 使用第二張菱形補齊
+               consumed.push(dCards[1].id);
              }
            }
         }

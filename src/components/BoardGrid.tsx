@@ -192,8 +192,9 @@ function PlayerToken({
           steppingPath.push(next);
           p = next;
           count++;
-          // 如果這格有電梯或電鰻，走步到此結束，接下來進入傳送階段
-          if (ESCALATORS.some(e => e[0] === p) || EELS.some(e => e[0] === p)) break;
+          // 只有當「這格機關的終點」剛好就是我們的「最終目的地」時，才在這裡中斷走步並轉入傳送
+          const { endPos } = applyConnectors(p);
+          if (endPos === to && p !== to) break;
         }
       }
 
