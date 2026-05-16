@@ -38,31 +38,7 @@ export function ScreenClient({ params }: Props) {
   const hostUrl = typeof window !== "undefined" ? `${window.location.origin}/host/${game.id}?hostSecret=${game.host_secret}` : "";
   const playerUrl = typeof window !== "undefined" ? `${window.location.origin}/play/${game.invite_code}` : "";
 
-  // 全螢幕題目階段
-  if (game.phase === "question") {
-    const answeredCount = players.filter(p => !!p.answers[String(game.current_round)]).length;
-    return (
-      <main className="min-h-screen bg-milky-beige/20 p-8 flex flex-col items-center justify-center page-fade-in">
-        <MotionWrapper type="bounce" className="text-center w-full max-w-4xl">
-          <p className="text-2xl font-black text-milky-brown/40 uppercase tracking-[0.5em] mb-4">ROUND {game.current_round}</p>
-          <h1 className="text-6xl md:text-8xl font-black text-milky-brown tracking-tighter mb-12">請在手機上作答</h1>
-          
-          <div className="pudding-card bg-white/80 p-8 inline-block min-w-[300px]">
-            <p className="text-sm font-bold uppercase tracking-widest text-milky-brown/60 mb-4">已作答玩家</p>
-            <div className="text-6xl font-black text-milky-accent flex items-center justify-center gap-4">
-              {answeredCount} <span className="text-3xl text-milky-brown/40">/ {players.length}</span>
-            </div>
-            <div className="w-full bg-milky-beige/30 h-4 rounded-full mt-6 overflow-hidden relative">
-              <div 
-                className="absolute top-0 left-0 h-full bg-milky-accent transition-all duration-500 ease-out"
-                style={{ width: `${players.length ? (answeredCount / players.length) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
-        </MotionWrapper>
-      </main>
-    );
-  }
+  // 已移除獨立的 question 分支，改為在主佈局中動態切換內容
 
   return (
     <main className="min-h-screen bg-[#FDFBF7] p-4 lg:p-8 flex flex-col page-fade-in overflow-hidden">
@@ -80,7 +56,8 @@ export function ScreenClient({ params }: Props) {
         <div className="flex items-center gap-6">
           <div className="bg-milky-beige/20 px-6 py-2 rounded-full border border-milky-beige/50 text-sm font-black text-milky-brown/60 uppercase tracking-widest">
             {game.phase === "lobby" && "等待玩家加入"}
-            {game.phase === "reveal" && "確認結果中"}
+            {game.phase === "question" && "玩家答題中"}
+            {game.phase === "reveal" && "公布題目答案"}
             {game.phase === "skill" && "技能施放中"}
             {game.phase === "settle" && "移動結算中"}
             {game.phase === "between_rounds" && "準備下回合"}
@@ -113,6 +90,14 @@ export function ScreenClient({ params }: Props) {
                 ))}
               </div>
             </MotionWrapper>
+          ) : (game.phase === "question" || game.phase === "reveal") ? (
+            <div className="w-full h-full flex items-center justify-center">
+              <img 
+                src={`https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/question/r${game.current_round}_${game.phase === "question" ? "question" : "answer"}.png`} 
+                alt={`Round ${game.current_round} ${game.phase === "question" ? "Question" : "Answer"}`}
+                className="h-full max-h-[800px] w-auto object-contain mx-auto shadow-2xl rounded-3xl"
+              />
+            </div>
           ) : (
             <div className="w-full max-w-[800px] aspect-square flex items-center justify-center">
                <BoardGrid
