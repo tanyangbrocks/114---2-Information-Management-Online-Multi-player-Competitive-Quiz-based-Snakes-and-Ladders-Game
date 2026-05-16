@@ -1,7 +1,6 @@
 "use client";
 
 import { HostPlayerTable } from "@/components/HostPlayerTable";
-import { QRInvitePanel } from "@/components/QRInvitePanel";
 import { createClient } from "@/lib/supabase/browser";
 import { rankPlayers } from "@/lib/game/ranking";
 import { useGameRealtime } from "@/hooks/useGameRealtime";
@@ -9,7 +8,7 @@ import { resolveSkillsAndStartSettle, resolveNextSkill } from "@/app/actions/res
 import { useMemo, useState, useEffect, useRef, use } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence } from "framer-motion";
-import { Loader2, Radio, SkipForward, Trophy, Sparkles, LayoutDashboard, Gift, Plus, Minus, X, UserPlus, CheckCircle2 } from "lucide-react";
+import { Loader2, Radio, SkipForward, Trophy, Sparkles, LayoutDashboard, Gift, Plus, Minus, X, UserPlus, CheckCircle2, MonitorUp, ExternalLink } from "lucide-react";
 import { giveCardsToPlayer, addBotToGame } from "@/app/actions/hostActions";
 import { useCardDraw } from "@/hooks/useCardDraw";
 import { MotionWrapper } from "@/components/MotionWrapper";
@@ -74,8 +73,8 @@ export function HostGameClient({ params }: Props) {
 
 
   const authorized = game && hostSecret && game.host_secret === hostSecret;
-  const inviteUrl =
-    typeof window !== "undefined" && game ? `${window.location.origin}/play/${game.invite_code}` : "";
+  const screenUrl =
+    typeof window !== "undefined" && game ? `${window.location.origin}/screen/${game.id}` : "";
 
   // 移除了手動建立頻道的邏輯，改用 Hook 提供的 sendSignal
 
@@ -362,10 +361,22 @@ export function HostGameClient({ params }: Props) {
           <p className="text-sm font-bold text-milky-brown/40">管理冒險進度與玩家互動</p>
         </div>
         {game.phase === "lobby" ? (
-          <div className="flex flex-col gap-4">
-            <MotionWrapper type="bounce" className="pudding-card !bg-milky-apricot/20 border-milky-apricot/30 flex items-center gap-6 py-4 px-8">
-              <h3 className="text-sm font-black text-milky-brown/60 italic">等待人員到齊中...</h3>
-              <div className="flex gap-4">
+          <div className="flex flex-col gap-4 w-full sm:w-auto">
+            <MotionWrapper type="bounce" className="pudding-card !bg-milky-apricot/20 border-milky-apricot/30 flex flex-col sm:flex-row items-center gap-6 py-4 px-8">
+              <div className="flex flex-col items-center sm:items-start gap-1">
+                <h3 className="text-sm font-black text-milky-brown/60 italic">等待人員到齊中...</h3>
+                <a 
+                  href={screenUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-xs font-bold text-milky-brown bg-white/60 px-3 py-1.5 rounded-full hover:bg-white transition-colors"
+                >
+                  <MonitorUp className="w-3.5 h-3.5" />
+                  開啟大螢幕 (Screen)
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+              <div className="flex flex-wrap justify-center gap-3 w-full sm:w-auto">
                 <button
                   onClick={handleAddBot}
                   disabled={busy !== null}
@@ -392,7 +403,7 @@ export function HostGameClient({ params }: Props) {
             </MotionWrapper>
           </div>
         ) : (
-          <div className="flex flex-wrap items-center justify-center gap-4 bg-white/40 p-2 rounded-[2.5rem] border-2 border-milky-beige backdrop-blur-sm">
+          <div className="flex flex-wrap items-center justify-center gap-3 bg-white/40 p-3 rounded-[2.5rem] border-2 border-milky-beige backdrop-blur-sm w-full sm:w-auto">
             {game.phase === "between_rounds" && (
               <button
                 onClick={sendQuestion}
@@ -494,8 +505,20 @@ export function HostGameClient({ params }: Props) {
         )}
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-[320px,1fr]">
-        <QRInvitePanel inviteUrl={inviteUrl} inviteCode={game.invite_code} />
+      <div className="grid gap-4 grid-cols-1">
+        {game.phase !== "lobby" && (
+          <div className="flex justify-end mb-2">
+            <a 
+              href={screenUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-xs font-bold text-milky-brown bg-white/60 px-4 py-2 rounded-full border border-milky-beige/50 hover:bg-white shadow-sm transition-colors"
+            >
+              <MonitorUp className="w-4 h-4" />
+              開啟大螢幕 (Screen)
+            </a>
+          </div>
+        )}
         <HostPlayerTable 
           game={game} 
           players={players} 

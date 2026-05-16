@@ -1,7 +1,7 @@
 "use client";
 import { cn } from "@/lib/cn";
 
-import { BoardGrid } from "@/components/BoardGrid";
+// import { BoardGrid } from "@/components/BoardGrid";
 import { useCardDraw } from "@/hooks/useCardDraw";
 import { useGameRealtime } from "@/hooks/useGameRealtime";
 import { rankPlayers } from "@/lib/game/ranking";
@@ -252,6 +252,16 @@ export function PlayClient({ params }: Props) {
       void supabase.from("players").update({ predicted_steps: dynamicTotalSteps }).eq("id", self.id);
     }
   }, [dynamicTotalSteps, self, game, supabase]);
+
+  // 由於移除了 BoardGrid，大屏端負責播動畫，手機端在 settle 階段過一段時間後自動確認
+  useEffect(() => {
+    if (game?.phase === "settle" && self && settledRoundRef.current !== game.current_round) {
+      const timer = setTimeout(() => {
+        void handleMoveDone();
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [game?.phase, game?.current_round, self, handleMoveDone]);
 
   const availableSkills = useMemo(() => {
     if (!self) return [];
@@ -656,18 +666,17 @@ export function PlayClient({ params }: Props) {
           <MotionWrapper type="bounce" className="p-10 pudding-card !bg-white/90 border-4 border-milky-apricot shadow-2xl flex flex-col items-center gap-8 text-center my-6">
             <div className="space-y-2">
               <h3 className="text-3xl font-black text-milky-brown tracking-tighter">冒險結算中</h3>
-              <p className="text-milky-brown/60 font-bold">棋子應會自動移動。若無反應，請點擊下方按鈕手動出發</p>
+              <p className="text-milky-brown/60 font-bold">請抬頭看大螢幕，確認您的移動結果！</p>
             </div>
-
+            <Loader2 className="h-10 w-10 animate-spin text-milky-apricot" />
             <button
               onClick={() => {
                 if (settledRoundRef.current === game.current_round) return;
-                // 簡化邏輯：直接拿資料庫當前的座標來強迫啟動動畫
-                setLocalMoveTarget({ pos: self.position, stars: 0 });
+                void handleMoveDone();
               }}
-              className="pudding-button-primary text-2xl px-16 py-6 shadow-2xl bg-milky-apricot animate-bounce border-b-8 border-milky-brown/20"
+              className="pudding-button-primary text-lg px-8 py-4 shadow-xl bg-milky-apricot/80"
             >
-              🚀 沒反應？手動出發！
+              略過等待 (手動確認)
             </button>
           </MotionWrapper>
         )}
@@ -894,30 +903,9 @@ export function PlayClient({ params }: Props) {
           </MotionWrapper>
         )}
 
-        <BoardGrid
-          players={players}
-          selfId={self.id}
-          phase={game.phase}
-          currentRound={game.current_round}
-          manualTarget={localMoveTarget?.pos}
-          animateFromPos={game.phase === "settle" ? animationFromPos : null}
-          onMoveComplete={() => {
-            if (game.phase === "settle" && settledRoundRef.current !== game.current_round) {
-              void handleMoveDone();
-            }
-          }}
-          onPlayerClick={(targetId) => {
-            if (skillStage === "target") {
-              setSelectedTarget(targetId);
-              if (skillPreview?.actionType === "C-2") {
-                setSkillStage("direction");
-              } else if (skillPreview) {
-                handleCastSkill(skillPreview, targetId);
-              }
-            }
-          }}
-          targetablePlayerIds={skillStage === "target" ? players.filter(p => p.id !== self.id).map(p => p.id) : []}
-        />
+        {/* TODO: OMITTED IN SCREEN
+            BoardGrid 已經完全移至 Screen 處理，PlayClient 專注於手牌與互動
+        */}
       </section>
 
       <aside className="w-full max-w-sm space-y-6 pudding-card !bg-milky-white/50 lg:sticky lg:top-8 border-none shadow-none">
