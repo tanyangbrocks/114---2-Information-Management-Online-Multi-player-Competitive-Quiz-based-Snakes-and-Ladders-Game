@@ -13,7 +13,6 @@ import { MotionWrapper } from "@/components/MotionWrapper";
 import { Loader2, Sparkles, User, SkipForward, Heart, CheckCircle2, MessageCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, use, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { moveBySteps } from "@/lib/game/boardEngine";
 import { castSkill } from "@/app/actions/skills";
 import { respondToSkillCounter } from "@/app/actions/resolveSkills";
 
@@ -253,16 +252,6 @@ export function PlayClient({ params }: Props) {
     }
   }, [dynamicTotalSteps, self, game, supabase]);
 
-  // 由於移除了 BoardGrid，大屏端負責播動畫，手機端在 settle 階段過一段時間後自動確認
-  useEffect(() => {
-    if (game?.phase === "settle" && self && settledRoundRef.current !== game.current_round) {
-      const timer = setTimeout(() => {
-        void handleMoveDone();
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [game?.phase, game?.current_round, self, handleMoveDone]);
-
   const availableSkills = useMemo(() => {
     if (!self) return [];
     return calculateAvailableSkills(self.cards || [], players.filter(p => p.id !== self.id), self.position);
@@ -354,6 +343,16 @@ export function PlayClient({ params }: Props) {
     void sendMoveDone(self.id, self.name, self.position);
     void sendSignal();
   }, [self, game, reload, sendMoveDone, sendSignal]);
+
+  // 由於移除了 BoardGrid，大屏端負責播動畫，手機端在 settle 階段過一段時間後自動確認
+  useEffect(() => {
+    if (game?.phase === "settle" && self && settledRoundRef.current !== game.current_round) {
+      const timer = setTimeout(() => {
+        void handleMoveDone();
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [game?.phase, game?.current_round, self, handleMoveDone]);
 
   const performMove = useCallback(async (pos: number, stars: number, heartToConsume?: string) => {
     if (!self || !game) return;
@@ -567,8 +566,6 @@ export function PlayClient({ params }: Props) {
 
   const currentRoundCard = self.cards.find(c => c.round === game.current_round);
   const correctChoice = game.rounds_config[game.current_round - 1]?.answer;
-  // 結算用：動畫出發點為進入 settle 前的位置（在 reveal 時快照）
-  const animationFromPos = preSettlePositionRef.current;
 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 lg:flex-row lg:items-start">

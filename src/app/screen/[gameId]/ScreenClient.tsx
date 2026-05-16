@@ -1,7 +1,7 @@
 "use client";
 
 import { useGameRealtime } from "@/hooks/useGameRealtime";
-import { useMemo, use } from "react";
+import { use } from "react";
 import { Loader2 } from "lucide-react";
 import { QRInvitePanel } from "@/components/QRInvitePanel";
 import { BoardGrid } from "@/components/BoardGrid";

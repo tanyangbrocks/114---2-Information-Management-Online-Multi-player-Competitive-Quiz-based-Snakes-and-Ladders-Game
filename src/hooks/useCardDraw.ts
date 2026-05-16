@@ -12,7 +12,7 @@ function newId(): string {
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
       return crypto.randomUUID();
     }
-  } catch (e) {
+  } catch {
     // Ignore and fallback
   }
   return `card_${Date.now()}_${Math.random().toString(16).slice(2)}`;
