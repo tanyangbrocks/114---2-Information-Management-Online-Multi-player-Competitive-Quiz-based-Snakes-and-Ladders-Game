@@ -26,11 +26,19 @@ const SUITS: Suit[] = ["S", "C", "D", "H"];
 export function useCardDraw() {
   const drawForSlot = useCallback((slot: 1 | 2, round: number): GameCard => {
     const randomSuit = SUITS[randomInt(0, 3)];
+    const suitNames: Record<Suit, string> = {
+      S: "何老師的貓",
+      C: "邱老師的板書",
+      D: "黃老師的水",
+      H: "師大的網路結界"
+    };
+    const suitName = suitNames[randomSuit];
+
     if (slot === 1) {
       const points = randomInt(1, 4);
       return {
         id: newId(),
-        name: `錯題卡 [${randomSuit}] · ${points} 步`,
+        name: `${suitName} [${randomSuit}] · ${points} 步`,
         points,
         effect: "",
         slot: 1,
@@ -42,7 +50,7 @@ export function useCardDraw() {
     const points = randomInt(6, 8);
     return {
       id: newId(),
-      name: `正解卡 [${randomSuit}] · ${points} 步`,
+      name: `${suitName} [${randomSuit}] · ${points} 步`,
       points,
       effect: "",
       slot: 2,

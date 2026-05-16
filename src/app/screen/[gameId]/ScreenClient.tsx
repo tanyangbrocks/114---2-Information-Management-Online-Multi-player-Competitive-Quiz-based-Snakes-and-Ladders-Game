@@ -1,7 +1,7 @@
 "use client";
 
 import { useGameRealtime } from "@/hooks/useGameRealtime";
-import { use } from "react";
+import React, { use } from "react";
 import { Loader2 } from "lucide-react";
 import { QRInvitePanel } from "@/components/QRInvitePanel";
 import { BoardGrid } from "@/components/BoardGrid";
@@ -16,6 +16,19 @@ type Props = {
 export function ScreenClient({ params }: Props) {
   const { gameId } = use(params);
   const { game, players, skillActions, status, error } = useGameRealtime(gameId);
+
+  // 紀錄結算前的出發點，避免切換畫面時組件重新掛載導致動畫丟失
+  const preSettlePositionsRef = React.useRef<Record<string, number>>({});
+
+  React.useEffect(() => {
+    if (game?.phase === "reveal") {
+      const newMap: Record<string, number> = {};
+      players.forEach(p => {
+        newMap[p.id] = p.position;
+      });
+      preSettlePositionsRef.current = newMap;
+    }
+  }, [game?.phase, players]);
 
   if (status === "loading" || status === "idle") {
     return (
@@ -101,10 +114,15 @@ export function ScreenClient({ params }: Props) {
           ) : (
             <div className="w-full max-w-[800px] aspect-square flex items-center justify-center">
                <BoardGrid
-                  players={players}
+                  players={players.map(p => ({
+                    ...p,
+                    // 利用一個臨時屬性將出發點傳遞下去（稍後需修改 BoardGrid 支援）
+                  }))}
                   selfId=""
                   phase={game.phase}
                   currentRound={game.current_round}
+                  // 新增這項 prop，但 BoardGrid 需要能接受 map 或是改寫 PlayerToken
+                  animateFromPosMap={preSettlePositionsRef.current}
                />
             </div>
           )}

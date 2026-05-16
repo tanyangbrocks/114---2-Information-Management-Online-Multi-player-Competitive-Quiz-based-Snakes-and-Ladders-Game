@@ -42,7 +42,7 @@ export async function resolveNextSkill(gameId: string, round: number) {
     const sortedActions = [...actions].sort((a, b) => {
       const rankA = rankedPlayers.findIndex(r => r.id === a.player_id);
       const rankB = rankedPlayers.findIndex(r => r.id === b.player_id);
-      return rankA - rankB;
+      return rankB - rankA; // 排名越靠後(索引越大)越先執行，排名越前(索引越小)越晚執行以產生蓋台效果
     });
 
     const action = sortedActions[0];
@@ -110,14 +110,8 @@ async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction,
   }
 
   if (action.action_type === "S-2") {
-    const currentCards = player.cards as GameCard[];
-    const roundCardIdx = currentCards.findIndex(c => c.round === round);
-    if (roundCardIdx !== -1) {
-      const oldCard = currentCards[roundCardIdx];
-      const newCards = [...currentCards];
-      newCards[roundCardIdx] = drawServerCard(oldCard.slot, round);
-      await supabase.from("players").update({ cards: newCards }).eq("id", player.id);
-    }
+    // S-2 現在是瞬發技能，由玩家在客戶端(skills.ts)發動時直接更新卡牌並設為 resolved
+    // 伺服器仲裁階段不需要再重複執行抽牌邏輯
   }
 
   if (action.action_type === "C-1") {
@@ -155,7 +149,8 @@ async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction,
     const randomEffect = effects[Math.floor(Math.random() * effects.length)];
 
     if (randomEffect === "S-1") {
-      const actualTarget = target || players.filter(p => p.id !== player.id)[Math.floor(Math.random() * (players.length - 1))];
+      const otherPlayers = players.filter(p => p.id !== player.id);
+      const actualTarget = target || (otherPlayers.length > 0 ? otherPlayers[Math.floor(Math.random() * otherPlayers.length)] : null);
       if (actualTarget) {
         const tCards = actualTarget.cards as GameCard[];
         const available = tCards.filter(c => !c.is_used);
@@ -165,12 +160,12 @@ async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction,
           await supabase.from("players").update({ cards: updatedCards }).eq("id", actualTarget.id);
         }
       }
-      // S-2 是瞬發技能，由玩家在客戶端處理，伺服器端此處不再重複執行
-      // (action.status 應已為 'resolved'，不會進入此函式)
     } else if (randomEffect === "S-2") {
       // U-3 抽到 S-2：設為 waiting_choice，讓玩家端彈出選牌視窗
-      // 注意：此函式在 resolveNextSkill 路徑中不處理 U-3 S-2，
-      // 該邏輯直接在 resolveSkillsAndStartSettle 的迴圈中以 continue 跳過
+      await supabase.from("skill_actions").update({
+        status: "waiting_choice",
+        metadata: { ...action.metadata, triggered_s2: true, random_effect: "S-2" }
+      }).eq("id", action.id);
     } else if (randomEffect === "C-1") {
       const nextPos = Math.min(100, player.position + 3);
       await supabase.from("players").update({ position: nextPos }).eq("id", player.id);
@@ -294,7 +289,7 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
         caster.position = target.position;
         target.position = temp;
       }
-      // U-3: 終極狂熱
+      // U-3: 梭哈是一種智慧
       if (action.action_type === "U-3") {
         const effects: SkillActionType[] = ["S-1", "S-2", "C-1", "H-1", "U-1"];
         const randomEffect = effects[Math.floor(Math.random() * effects.length)];
@@ -394,9 +389,18 @@ function drawServerCard(slot: 1 | 2, round: number): GameCard {
   const suits: Suit[] = ["S", "C", "D", "H"];
   const suit = suits[Math.floor(Math.random() * 4)];
   const points = slot === 1 ? Math.floor(Math.random() * 4) + 1 : Math.floor(Math.random() * 3) + 6;
+
+  const suitNames: Record<Suit, string> = {
+    S: "何老師的貓",
+    C: "邱老師的板書",
+    D: "黃老師的水",
+    H: "師大的網路結界"
+  };
+  const suitName = suitNames[suit];
+
   return {
     id: `card_srv_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-    name: `${slot === 2 ? "正解卡" : "錯題卡"} [${suit}] · ${points} 步`,
+    name: `${suitName} [${suit}] · ${points} 步`,
     points,
     effect: "",
     slot,

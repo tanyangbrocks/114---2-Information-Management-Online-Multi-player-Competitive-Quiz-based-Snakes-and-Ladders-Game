@@ -62,22 +62,36 @@ export async function castSkill(
       return c;
     });
 
-    // 如果是 S-2，直接將玩家選擇的新牌加入手牌
-    const fromU3Id = metadata?.from_u3_action_id as string | undefined;
+    // --- S-2 (重修舊好) 特殊處理 ---
+    if (actionType === "S-2") {
+      const fromU3Id = metadata?.from_u3_action_id as string | undefined;
+      const s2_suit = metadata?.s2_suit as Suit | undefined;
+      const s2_points = Number(metadata?.s2_points || 0);
 
-    if (actionType === "S-2" && metadata?.s2_suit && metadata?.s2_points) {
+      if (!s2_suit) {
+        return { success: false, error: "S-2 缺少必要的牌型資訊" };
+      }
+
+      const suitNames: Record<Suit, string> = {
+        S: "何老師的貓",
+        C: "邱老師的板書",
+        D: "黃老師的水",
+        H: "師大的網路結界"
+      };
+      const suitName = suitNames[s2_suit];
+
       updatedCards.push({
         id: `S2-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        suit: metadata.s2_suit as Suit,
-        points: Number(metadata.s2_points),
-        name: `瞬發補給 [${metadata.s2_suit}] · ${metadata.s2_points} 步`,
+        suit: s2_suit,
+        points: s2_points,
+        name: `${suitName} [${s2_suit}] · ${s2_points} 步`,
         effect: "",
         round: round,
         slot: 2,
         is_used: false
       });
 
-      // 先更新玩家手牌
+      // 更新玩家手牌
       const { error: cardUpdateErr } = await supabase.from("players").update({ cards: updatedCards }).eq("id", playerId);
       if (cardUpdateErr) return { success: false, error: "更新卡牌狀態失敗: " + cardUpdateErr.message };
 
@@ -99,6 +113,7 @@ export async function castSkill(
           metadata
         });
         if (insertErr) {
+          // 發生錯誤時嘗試復原卡牌狀態（可選）
           await supabase.from("players").update({ cards }).eq("id", playerId);
           return { success: false, error: "寫入技能動作失敗: " + insertErr.message };
         }

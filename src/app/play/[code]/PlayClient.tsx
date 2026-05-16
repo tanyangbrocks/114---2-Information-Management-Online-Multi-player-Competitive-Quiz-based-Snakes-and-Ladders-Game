@@ -344,15 +344,20 @@ export function PlayClient({ params }: Props) {
     void sendSignal();
   }, [self, game, reload, sendMoveDone, sendSignal]);
 
+  const latestHandleMoveDone = useRef(handleMoveDone);
+  useEffect(() => {
+    latestHandleMoveDone.current = handleMoveDone;
+  }, [handleMoveDone]);
+
   // 由於移除了 BoardGrid，大屏端負責播動畫，手機端在 settle 階段過一段時間後自動確認
   useEffect(() => {
-    if (game?.phase === "settle" && self && settledRoundRef.current !== game.current_round) {
+    if (game?.phase === "settle" && settledRoundRef.current !== game.current_round) {
       const timer = setTimeout(() => {
-        void handleMoveDone();
+        void latestHandleMoveDone.current();
       }, 5000);
       return () => clearTimeout(timer);
     }
-  }, [game?.phase, game?.current_round, self, handleMoveDone]);
+  }, [game?.phase, game?.current_round]);
 
   const performMove = useCallback(async (pos: number, stars: number, heartToConsume?: string) => {
     if (!self || !game) return;
@@ -690,7 +695,7 @@ export function PlayClient({ params }: Props) {
                     {pendingCounter && (
                       <div className="space-y-6">
                         <h2 className="text-3xl font-black text-milky-brown">技能攔截！</h2>
-                        <p className="text-sm font-bold text-milky-brown/60">對手發動了 {pendingCounter.action_type}。消耗 2 張菱形反制？</p>
+                        <p className="text-sm font-bold text-milky-brown/60">對手發動了 {pendingCounter.action_type}。<br/>消耗 2 張菱形發動「白板防禦」反制？</p>
                         <div className="flex gap-4 pt-4">
                           <button onClick={() => respondToSkillCounter(pendingCounter.id, true)} className="pudding-button-primary flex-1 bg-milky-accent text-white">是</button>
                           <button onClick={() => respondToSkillCounter(pendingCounter.id, false)} className="pudding-button-secondary flex-1">否</button>
@@ -700,7 +705,7 @@ export function PlayClient({ params }: Props) {
                     {snakeTarget && (
                       <div className="space-y-6">
                         <h2 className="text-3xl font-black text-milky-brown">遭遇危險！</h2>
-                        <p className="text-sm font-bold text-milky-brown/60">即將跌落，消耗 1 張紅心抵銷？</p>
+                        <p className="text-sm font-bold text-milky-brown/60">即將跌落，消耗 1 張「師大的網路結界」抵銷？</p>
                         <div className="flex gap-4 pt-4">
                           <button onClick={() => {
                             const hId = snakeTarget.cards[0].id;
@@ -745,8 +750,14 @@ export function PlayClient({ params }: Props) {
                 {availableSkills.length === 0 ? <div className="py-20 text-center bg-white/40 rounded-[4rem] border-4 border-dashed border-milky-beige/50"><p className="text-sm font-black text-milky-brown/20">目前沒有可發動的技能</p></div> : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {availableSkills.map((skill) => (
-                      <button key={skill.actionType} onClick={() => { setSkillPreview(skill); setSkillStage("preview"); setIsDrawerOpen(false); }} className="group rounded-[3rem] bg-white p-8 text-left shadow-sm border-2 border-transparent hover:border-milky-apricot transition-all hover:shadow-2xl hover:-translate-y-2">
-                        <div className="flex items-center justify-between mb-2"><span className="text-2xl font-black text-milky-brown">{skill.name}</span></div>
+                      <button key={skill.actionType} onClick={() => { setSkillPreview(skill); setSkillStage("preview"); setIsDrawerOpen(false); }} className="group rounded-[3rem] bg-white p-8 text-left shadow-sm border-2 border-transparent hover:border-milky-apricot transition-all hover:shadow-2xl hover:-translate-y-2 flex flex-col justify-between h-full">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xl font-black text-milky-brown leading-tight break-words">
+                            {skill.name === "按下空格鍵即可開始遊戲" ? (
+                              <>按下空格鍵<br/>即可開始遊戲</>
+                            ) : skill.name}
+                          </span>
+                        </div>
                         <p className="text-xs font-bold text-milky-brown/40 leading-relaxed line-clamp-2">{skill.description}</p>
                       </button>
                     ))}
@@ -765,7 +776,11 @@ export function PlayClient({ params }: Props) {
               </button>
               <div className="pudding-card shadow-2xl border-4 border-white text-center">
                 <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-milky-brown text-white shadow-xl"><Sparkles className="h-10 w-10" /></div>
-                <h3 className="text-3xl font-black text-milky-brown mb-3">{skillPreview.name}</h3>
+                <h3 className="text-3xl font-black text-milky-brown mb-3">
+                  {skillPreview.name === "按下空格鍵即可開始遊戲" ? (
+                    <>按下空格鍵<br/>即可開始遊戲</>
+                  ) : skillPreview.name}
+                </h3>
                 <p className="text-sm font-bold text-milky-brown/60 mb-8">{skillPreview.description}</p>
                 <div className="flex gap-4">
                   <button onClick={() => { setSkillPreview(null); setSkillStage("idle"); setIsDrawerOpen(true); }} className="pudding-button-secondary flex-1">取消</button>
@@ -910,10 +925,10 @@ export function PlayClient({ params }: Props) {
       <aside className="w-full max-w-sm space-y-6 pudding-card !bg-milky-white/50 lg:sticky lg:top-8 border-none shadow-none">
         <div className="flex items-center gap-3"><div className="h-10 w-10 rounded-[1.2rem] bg-milky-brown text-white flex items-center justify-center shadow-lg"><Heart className="h-5 w-5" /></div><h2 className="text-xl font-black text-milky-brown tracking-tighter">我的卡池</h2></div>
         <div className="grid grid-cols-4 gap-3 rounded-[2rem] bg-white p-5 shadow-sm border border-milky-beige/30 text-center">
-          <div><p className="text-[10px] font-black text-milky-brown/20 mb-1">♠</p><p className="text-lg font-black text-milky-brown">{suitCounts.S}</p></div>
-          <div><p className="text-[10px] font-black text-milky-brown/20 mb-1">♣</p><p className="text-lg font-black text-milky-brown">{suitCounts.C}</p></div>
-          <div><p className="text-[10px] font-black text-milky-accent/50 mb-1">♦</p><p className="text-lg font-black text-milky-accent">{suitCounts.D}</p></div>
-          <div><p className="text-[10px] font-black text-milky-accent/50 mb-1">♥</p><p className="text-lg font-black text-milky-accent">{suitCounts.H}</p></div>
+          <div className="flex flex-col items-center"><p className="text-[10px] font-black text-milky-brown/20 mb-1">何老師</p><p className="text-lg font-black text-milky-brown">{suitCounts.S}</p></div>
+          <div className="flex flex-col items-center"><p className="text-[10px] font-black text-milky-brown/20 mb-1">邱老師</p><p className="text-lg font-black text-milky-brown">{suitCounts.C}</p></div>
+          <div className="flex flex-col items-center"><p className="text-[10px] font-black text-milky-accent/50 mb-1">黃老師</p><p className="text-lg font-black text-milky-accent">{suitCounts.D}</p></div>
+          <div className="flex flex-col items-center"><p className="text-[10px] font-black text-milky-accent/50 mb-1">師大</p><p className="text-lg font-black text-milky-accent">{suitCounts.H}</p></div>
         </div>
         {self.cards.length === 0 ? <div className="py-20 text-center rounded-[3rem] border-4 border-dashed border-milky-beige/30"><p className="text-xs font-black text-milky-brown/20 uppercase tracking-[0.3em]">No cards collected</p></div> : (
           <ul className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
@@ -948,13 +963,13 @@ export function PlayClient({ params }: Props) {
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm space-y-6">
             {s2Selection.triggeredByActionId ? (
               <div className="text-center space-y-1">
-                <p className="text-xs font-black text-milky-accent uppercase tracking-widest">終極狂熱觸發！</p>
-                <h3 className="text-2xl font-black text-milky-brown">命運重啟</h3>
+                <p className="text-xs font-black text-milky-accent uppercase tracking-widest">梭哈是一種智慧觸發！</p>
+                <h3 className="text-2xl font-black text-milky-brown">重修舊好</h3>
                 <p className="text-sm font-bold text-milky-brown/60">U-3 為您隨機抽到了這個能力！<br/>免費選一張牌加入步數，無需消耗資源</p>
               </div>
             ) : (
               <>
-                <h3 className="text-2xl font-black text-milky-brown text-center">命運重啟</h3>
+                <h3 className="text-2xl font-black text-milky-brown text-center">重修舊好</h3>
                 <p className="text-sm font-bold text-milky-brown/60 text-center">選擇一張卡牌加入本回合的移動步數</p>
               </>
             )}

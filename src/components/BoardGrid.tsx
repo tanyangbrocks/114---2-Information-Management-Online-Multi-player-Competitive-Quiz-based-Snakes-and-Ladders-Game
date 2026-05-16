@@ -13,8 +13,8 @@ function getCellCoords(n: number) {
   const c = (n - 1) % 10;
   const x = r % 2 === 0 ? c : 9 - c;
   const y = 9 - r;
-  // 再微調：向上調整 (-2)，向左調整 (-1)
-  return { x: x * 10 + 6, y: y * 10 - 2 };
+  // 再次微調：向下調整 (+0.5)，向右調整 (+0.5)
+  return { x: x * 10 + 6.5, y: y * 10 - 1.5 };
 }
 
 type Props = {
@@ -26,8 +26,10 @@ type Props = {
   currentRound: number;
   manualTarget?: number | null;
   onMoveComplete?: () => void;
-  /** 動畫出發點：在 reveal 時快照的自身位置，讓 settle 時能從正確位置播動畫 */
+  /** 動畫出發點：針對單人玩家 */
   animateFromPos?: number | null;
+  /** 動畫出發點地圖：針對大屏端全體玩家 */
+  animateFromPosMap?: Record<string, number>;
 };
 
 export function BoardGrid({
@@ -40,6 +42,7 @@ export function BoardGrid({
   manualTarget,
   onMoveComplete,
   animateFromPos,
+  animateFromPosMap,
 }: Props) {
   const { buildZigzagGrid } = useSnakeLadderBoard();
   const grid = buildZigzagGrid();
@@ -86,7 +89,7 @@ export function BoardGrid({
             currentRound={currentRound}
             manualTarget={p.id === selfId ? manualTarget : null}
             onMoveComplete={onMoveComplete}
-            animateFromPos={p.id === selfId ? animateFromPos : null}
+            animateFromPos={animateFromPosMap ? animateFromPosMap[p.id] : (p.id === selfId ? animateFromPos : null)}
           />
         ))}
       </div>

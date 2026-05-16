@@ -97,74 +97,84 @@ export function calculateAvailableSkills(cards: GameCard[], otherPlayers: Player
   const hasOtherPlayers = otherPlayers.length > 0;
   const anyOtherPlayerHasCards = otherPlayers.some(p => p.cards.filter(c => !c.is_used).length > 0);
 
-  // S-1: 指定對象，捨棄其一張手牌
+  // S-1: 常數項微分 (1S)
   if (canAfford(counts, 1, 0, 0, 0) && hasOtherPlayers && anyOtherPlayerHasCards) {
     skills.push({ 
       actionType: "S-1", 
       requiresTarget: true, 
       costDescription: "1S",
-      name: "黑桃打擊",
+      name: "常數項微分",
       description: "指定一名玩家，隨機捨棄其一張尚未使用的手牌。"
     });
   }
-  // S-2: 自由選擇並獲得一張新牌
+  // S-2: 重修舊好 (2S)
   if (canAfford(counts, 2, 0, 0, 0)) {
     skills.push({ 
       actionType: "S-2", 
       requiresTarget: false, 
       costDescription: "2S",
-      name: "命運重啟",
+      name: "重修舊好",
       description: "自由選擇一張牌（任意花色，1到8點），立刻將其點數加入本回合預計步數，不結束技能回合。"
     });
   }
-  // C-1: 自身移動 +1 或 -1
+  // C-1: 自我催眠 (1C)
   if (canAfford(counts, 0, 1, 0, 0)) {
     skills.push({ 
       actionType: "C-1", 
       requiresTarget: false, 
       costDescription: "1C",
-      name: "梅花挪移",
+      name: "自我催眠",
       description: "讓自己向前或向後移動 1 格。"
     });
   }
-  // C-2: 指定對象移動 +1 或 -1
+  // C-2: 精神干擾 (2C)
   if (canAfford(counts, 0, 2, 0, 0) && hasOtherPlayers) {
     skills.push({ 
       actionType: "C-2", 
       requiresTarget: true, 
       costDescription: "2C",
-      name: "控制波紋",
+      name: "精神干擾",
       description: "指定一名其他玩家，使其向前或向後移動 1 格。"
     });
   }
-  // U-1: 傳送至最近梯子
+  // H-1: 回應時間過長 (1H)
+  if (canAfford(counts, 0, 0, 1, 0)) {
+    skills.push({
+      actionType: "H-1",
+      requiresTarget: false,
+      costDescription: "1H",
+      name: "回應時間過長",
+      description: "根據當前排名，額外移動對應格數（第 1 名 +1，第 2 名 +2...）。"
+    });
+  }
+  // U-1: 遲到前的幻想 (3 同色)
   const nextLadder = findNearestEscalator(currentPosition);
   if (canAffordU1(counts) && nextLadder) {
     skills.push({ 
       actionType: "U-1", 
       requiresTarget: false, 
       costDescription: "3 同色",
-      name: "磁力傳送",
+      name: "遲到前的幻想",
       description: "自動傳送至距離自己最近的下一個梯子（向上爬）。"
     });
   }
-  // U-2: 指定一隊伍與自身調換位置
+  // U-2: 天手力 (4 異色)
   if (canAffordU2(counts) && hasOtherPlayers) {
     skills.push({ 
       actionType: "U-2", 
       requiresTarget: true, 
       costDescription: "4 異色",
-      name: "位置交換",
+      name: "天手力",
       description: "與指定的一名玩家互換棋盤上的位置。"
     });
   }
-  // U-3: 隨機獲得一種技能效果
+  // U-3: 梭哈是一種智慧 (全手牌)
   if (totalCards >= 3) {
     skills.push({ 
       actionType: "U-3", 
       requiresTarget: false, 
       costDescription: "全手牌",
-      name: "終極狂熱",
+      name: "梭哈是一種智慧",
       description: "消耗所有剩餘手牌（至少 3 張），隨機觸發一種強力的效果。"
     });
   }
