@@ -13,7 +13,8 @@ function getCellCoords(n: number) {
   const c = (n - 1) % 10;
   const x = r % 2 === 0 ? c : 9 - c;
   const y = 9 - r;
-  return { x: x * 10 + 5, y: y * 10 + 5 };
+  // 向上調整約 1 個直徑 (-5)，向右調整約 0.4 個直徑 (+2)
+  return { x: x * 10 + 7, y: y * 10 };
 }
 
 type Props = {

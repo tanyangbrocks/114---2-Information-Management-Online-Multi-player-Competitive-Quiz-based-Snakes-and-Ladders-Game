@@ -23,7 +23,7 @@ export function HostGameClient({ params }: Props) {
   const searchParams = useSearchParams();
   const hostSecret = searchParams.get("hostSecret") ?? "";
 
-  const { game, players, skillActions, status, error, reload, sendSignal } = useGameRealtime(gameId);
+  const { game, players, skillActions, status, error, reload, sendSignal, onMoveDone } = useGameRealtime(gameId);
   const supabase = useMemo(() => createClient(), []);
   const [busy, setBusy] = useState<"next" | "send" | "gift" | "bot" | null>(null);
   const [isArbitrating, setIsArbitrating] = useState(false);
@@ -40,7 +40,6 @@ export function HostGameClient({ params }: Props) {
   const [movedPlayerIds, setMovedPlayerIds] = useState<Set<string>>(new Set());
 
   // 監聽玩家動畫完成訊號
-  const { onMoveDone } = useGameRealtime(gameId);
   useEffect(() => {
     onMoveDone((payload) => {
       setMovedPlayerIds(prev => new Set(prev).add(payload.playerId));

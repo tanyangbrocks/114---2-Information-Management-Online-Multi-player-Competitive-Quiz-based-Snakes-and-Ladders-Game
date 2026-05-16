@@ -349,7 +349,7 @@ export function PlayClient({ params }: Props) {
     if (game?.phase === "settle" && self && settledRoundRef.current !== game.current_round) {
       const timer = setTimeout(() => {
         void handleMoveDone();
-      }, 3000);
+      }, 5000);
       return () => clearTimeout(timer);
     }
   }, [game?.phase, game?.current_round, self, handleMoveDone]);
@@ -389,6 +389,8 @@ export function PlayClient({ params }: Props) {
 
     if (skill.actionType === "S-2") {
       setS2Selection({ isOpen: true, suit: null, points: null });
+      setSkillPreview(null);
+      setSkillStage("idle");
       return;
     }
 
