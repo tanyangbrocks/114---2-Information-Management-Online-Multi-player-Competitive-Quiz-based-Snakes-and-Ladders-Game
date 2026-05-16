@@ -44,16 +44,24 @@ export function BoardGrid({
   const grid = buildZigzagGrid();
 
   return (
-    <div className="relative w-full max-w-xl select-none aspect-square">
+    <div 
+      className="relative w-full max-w-xl select-none aspect-square"
+      style={{
+        backgroundImage: "url('https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/big_object/snake_ladder.png')",
+        backgroundSize: "contain",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat"
+      }}
+    >
       {/* 棋盤底層 */}
-      <div className="grid grid-cols-10 gap-1 sm:gap-1.5 h-full w-full">
+      <div className="grid grid-cols-10 h-full w-full">
         {grid.flatMap((row) =>
           row.map((cell) => (
             <div
               key={cell}
-              className="relative flex h-full w-full items-center justify-center rounded-xl border-2 border-milky-beige/50 bg-white/40"
+              className="relative flex h-full w-full items-center justify-center border-none bg-transparent"
             >
-              <span className="text-[10px] font-black text-milky-brown/20 absolute top-1 left-1.5">
+              <span className="text-[10px] font-black absolute top-1 left-1.5 opacity-0">
                 {cell}
               </span>
             </div>
@@ -61,40 +69,7 @@ export function BoardGrid({
         )}
       </div>
 
-      {/* SVG 連接線層 */}
-      <svg className="absolute inset-0 pointer-events-none h-full w-full overflow-visible" viewBox="0 0 100 100">
-        {ESCALATORS.map(([start, end], idx) => {
-          const s = getCellCoords(start);
-          const e = getCellCoords(end);
-          return (
-            <path
-              key={`ladder-${idx}`}
-              d={`M ${s.x} ${s.y} L ${e.x} ${e.y}`}
-              stroke="#FBCEB1"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeDasharray="4 2"
-              fill="none"
-              className="opacity-60"
-            />
-          );
-        })}
-        {EELS.map(([start, end], idx) => {
-          const s = getCellCoords(start);
-          const e = getCellCoords(end);
-          return (
-            <path
-              key={`eel-${idx}`}
-              d={`M ${s.x} ${s.y} L ${e.x} ${e.y}`}
-              stroke="#A1887F"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              fill="none"
-              className="opacity-40"
-            />
-          );
-        })}
-      </svg>
+      {/* SVG 連接線層已移除，因為背景圖片自帶蛇與梯子的視覺 */}
 
       {/* 玩家棋子層 */}
       <div className="absolute inset-0 pointer-events-none">

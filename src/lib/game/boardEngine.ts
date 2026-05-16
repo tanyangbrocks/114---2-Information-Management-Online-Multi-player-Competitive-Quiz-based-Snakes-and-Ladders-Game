@@ -4,19 +4,21 @@ import { GameCard } from "@/types/game";
  * 數字 1 在左下角，之字形向上至 100。
  */
 export const ESCALATORS: ReadonlyArray<readonly [number, number]> = [
-  [3, 22],
-  [36, 55],
-  [67, 88],
-  [7, 34],
-  [81, 99]
+  [5, 34],
+  [10, 29],
+  [19, 40],
+  [50, 69],
+  [56, 66],
+  [80, 82]
 ];
 
 export const EELS: ReadonlyArray<readonly [number, number]> = [
-  [26, 5],
-  [58, 39],
-  [93, 72],
-  [48, 17],
-  [98, 83]
+  [38, 4],
+  [55, 33],
+  [74, 53],
+  [92, 72],
+  [94, 76],
+  [96, 43]
 ];
 
 const jumps = new Map<number, number>();
