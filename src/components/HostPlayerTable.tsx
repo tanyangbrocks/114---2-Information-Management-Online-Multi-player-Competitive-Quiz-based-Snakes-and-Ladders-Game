@@ -99,11 +99,15 @@ export function HostPlayerTable({ game, players, skillActions, isArbitrating }: 
                       "—"
                     ) : (
                       <div className="flex flex-wrap gap-1">
-                        {p.cards.slice(-3).map((c) => (
-                          <span key={c.id} className="bg-milky-beige/50 px-2 py-0.5 rounded-full text-[10px] font-bold">
-                             {c.suit}
-                          </span>
-                        ))}
+                        {p.cards.slice(-5).map((c) => {
+                          const suitMap: Record<string, string> = { S: 'h', C: 'ch', D: 'hu', H: 'st' };
+                          return (
+                            <div key={c.id} className="relative group w-8 h-12 shadow-sm rounded-md overflow-hidden border border-milky-beige/30">
+                              <img src={`/media/picture/card/card_${suitMap[c.suit]}_${c.points}.png`} alt={c.suit} className="w-full h-full object-cover" />
+                              {c.is_used && <div className="absolute inset-0 bg-black/40" />}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </td>

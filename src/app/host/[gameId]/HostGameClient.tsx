@@ -630,14 +630,13 @@ export function HostGameClient({ params }: Props) {
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                    {(["S", "C", "D", "H"] as Suit[]).map(suit => (
+                    {(["S", "C", "D", "H"] as Suit[]).map(suit => {
+                      const suitMap: Record<string, string> = { S: 'h', C: 'ch', D: 'hu', H: 'st' };
+                      return (
                       <div key={suit} className="pudding-card !bg-white border-milky-beige/50 flex flex-col items-center gap-3">
-                        <span className="text-2xl">
-                          {suit === 'S' && '♠'}
-                          {suit === 'C' && '♣'}
-                          {suit === 'D' && '♦'}
-                          {suit === 'H' && '♥'}
-                        </span>
+                        <div className="w-16 h-24 rounded-lg overflow-hidden shadow-sm">
+                          <img src={`/media/picture/card/card_${suitMap[suit]}_1.png`} alt={suit} className="w-full h-full object-cover" />
+                        </div>
                         <div className="flex items-center gap-4">
                           <button 
                             onClick={() => updateGiftCount(suit, -1)}
@@ -654,7 +653,7 @@ export function HostGameClient({ params }: Props) {
                           </button>
                         </div>
                       </div>
-                    ))}
+                    )})}
                   </div>
 
                   <button

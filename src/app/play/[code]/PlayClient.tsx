@@ -925,35 +925,36 @@ export function PlayClient({ params }: Props) {
       <aside className="w-full max-w-sm space-y-6 pudding-card !bg-milky-white/50 lg:sticky lg:top-8 border-none shadow-none">
         <div className="flex items-center gap-3"><div className="h-10 w-10 rounded-[1.2rem] bg-milky-brown text-white flex items-center justify-center shadow-lg"><Heart className="h-5 w-5" /></div><h2 className="text-xl font-black text-milky-brown tracking-tighter">我的卡池</h2></div>
         <div className="grid grid-cols-4 gap-3 rounded-[2rem] bg-white p-5 shadow-sm border border-milky-beige/30 text-center">
-          <div className="flex flex-col items-center"><p className="text-[10px] font-black text-milky-brown/20 mb-1">何老師</p><p className="text-lg font-black text-milky-brown">{suitCounts.S}</p></div>
-          <div className="flex flex-col items-center"><p className="text-[10px] font-black text-milky-brown/20 mb-1">邱老師</p><p className="text-lg font-black text-milky-brown">{suitCounts.C}</p></div>
-          <div className="flex flex-col items-center"><p className="text-[10px] font-black text-milky-accent/50 mb-1">黃老師</p><p className="text-lg font-black text-milky-accent">{suitCounts.D}</p></div>
-          <div className="flex flex-col items-center"><p className="text-[10px] font-black text-milky-accent/50 mb-1">師大</p><p className="text-lg font-black text-milky-accent">{suitCounts.H}</p></div>
+          <div className="flex flex-col items-center gap-1"><img src="/media/picture/icon/h.png" alt="S" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-brown">{suitCounts.S}</p></div>
+          <div className="flex flex-col items-center gap-1"><img src="/media/picture/icon/ch.png" alt="C" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-brown">{suitCounts.C}</p></div>
+          <div className="flex flex-col items-center gap-1"><img src="/media/picture/icon/hu.png" alt="D" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-accent">{suitCounts.D}</p></div>
+          <div className="flex flex-col items-center gap-1"><img src="/media/picture/icon/st.png" alt="H" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-accent">{suitCounts.H}</p></div>
         </div>
         {self.cards.length === 0 ? <div className="py-20 text-center rounded-[3rem] border-4 border-dashed border-milky-beige/30"><p className="text-xs font-black text-milky-brown/20 uppercase tracking-[0.3em]">No cards collected</p></div> : (
-          <ul className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-            {[...self.cards].reverse().map((c) => (
-              <MotionWrapper type="bounce" key={c.id} className={`group relative overflow-hidden rounded-[2.5rem] border-2 p-6 shadow-sm transition-all ${c.is_used ? 'bg-milky-beige/10 border-milky-beige/30 grayscale-[0.8]' : 'bg-white border-milky-beige hover:border-milky-apricot'}`}>
-                {c.is_used && (
-                  <div className="absolute top-2 right-4 bg-milky-brown/10 text-[8px] font-black px-2 py-0.5 rounded-full text-milky-brown/40 tracking-widest">USED</div>
-                )}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className={`text-lg font-black tracking-tight ${c.is_used ? 'text-milky-brown/40' : 'text-milky-brown'}`}>{c.name}</p>
-                    <p className="text-[10px] font-bold text-milky-brown/30 uppercase">Round {c.round}</p>
-                  </div>
-                  <div className={`text-3xl ${c.is_used ? 'opacity-20' : 'text-milky-accent/40 group-hover:scale-125 transition-transform'}`}>
-                    {c.suit === 'S' && '♠'}
-                    {c.suit === 'C' && '♣'}
-                    {c.suit === 'D' && '♦'}
-                    {c.suit === 'H' && '♥'}
-                  </div>
-                </div>
-                {!c.is_used && (
-                  <div className="absolute inset-y-0 left-0 w-1.5 bg-milky-apricot opacity-0 group-hover:opacity-100 transition-opacity" />
-                )}
-              </MotionWrapper>
-            ))}
+          <ul className="flex overflow-x-auto pb-4 custom-scrollbar gap-4 px-2">
+            {[...self.cards].reverse().map((c) => {
+              let sourceText = "來自答題抽卡";
+              if (c.effect === "Admin Gift") sourceText = "來自主辦方發送";
+              if (c.id.includes("S2-")) sourceText = "來自重修舊好";
+              
+              const suitMap: Record<string, string> = { S: 'h', C: 'ch', D: 'hu', H: 'st' };
+              const cardImgSrc = `/media/picture/card/card_${suitMap[c.suit]}_${c.points}.png`;
+              
+              return (
+                <li key={c.id} className="shrink-0 flex flex-col items-center gap-2">
+                  <span className="text-[10px] font-black text-milky-brown/60 bg-milky-beige/30 px-3 py-1 rounded-full whitespace-nowrap shadow-sm">{sourceText}</span>
+                  <MotionWrapper type="bounce" className={`group relative overflow-hidden rounded-[2rem] border-2 shadow-sm transition-all w-32 h-48 ${c.is_used ? 'bg-milky-beige/10 border-milky-beige/30 grayscale-[0.8] opacity-60' : 'bg-white border-milky-beige hover:border-milky-apricot hover:scale-105'}`}>
+                    {c.is_used && (
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10">
+                        <span className="text-[10px] font-black text-white bg-black/60 px-2 py-0.5 rounded-full tracking-widest">USED</span>
+                      </div>
+                    )}
+                    <img src={cardImgSrc} alt={c.name} className="w-full h-full object-cover" />
+                    {!c.is_used && <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity" />}
+                  </MotionWrapper>
+                </li>
+              );
+            })}
           </ul>
         )}
       </aside>
@@ -977,13 +978,13 @@ export function PlayClient({ params }: Props) {
             <div className="space-y-3">
               <p className="text-sm font-bold text-milky-brown">1. 選擇花色</p>
               <div className="grid grid-cols-4 gap-2">
-                {(["S", "H", "D", "C"] as const).map(s => (
-                  <button key={s} onClick={() => setS2Selection(prev => ({ ...prev, suit: s }))} className={`py-3 rounded-xl border-2 text-2xl font-black transition-all ${s2Selection.suit === s ? "border-milky-accent bg-milky-accent/10" : "border-milky-beige bg-milky-white hover:border-milky-apricot"}`}>
-                    <span className={s === "D" || s === "H" ? "text-milky-accent" : "text-milky-brown"}>
-                      {s === "S" ? "♠" : s === "H" ? "♥" : s === "D" ? "♦" : "♣"}
-                    </span>
+                {(["S", "H", "D", "C"] as const).map(s => {
+                  const suitMap: Record<string, string> = { S: 'h', C: 'ch', D: 'hu', H: 'st' };
+                  return (
+                  <button key={s} onClick={() => setS2Selection(prev => ({ ...prev, suit: s }))} className={`py-3 flex justify-center items-center rounded-xl border-2 transition-all ${s2Selection.suit === s ? "border-milky-accent bg-milky-accent/10" : "border-milky-beige bg-milky-white hover:border-milky-apricot"}`}>
+                    <img src={`/media/picture/icon/${suitMap[s]}.png`} alt={s} className="w-8 h-8 object-contain" />
                   </button>
-                ))}
+                )})}
               </div>
             </div>
 
