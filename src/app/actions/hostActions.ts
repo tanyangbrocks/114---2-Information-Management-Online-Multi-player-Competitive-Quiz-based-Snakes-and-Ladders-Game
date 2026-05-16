@@ -39,7 +39,7 @@ export async function giveCardsToPlayer(
         const points = randomInt(1, 8); // 管理員給予的卡片點數隨機 1-8
         newBatch.push({
           id: newId(),
-          name: `管理員禮包 [${suit}] · ${points} 步`,
+          name: `管理員禮包 · ${points} 步`,
           points,
           effect: "Admin Gift",
           slot: 2,

@@ -84,7 +84,7 @@ export async function castSkill(
         id: `S2-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         suit: s2_suit,
         points: s2_points,
-        name: `${suitName} [${s2_suit}] · ${s2_points} 步`,
+        name: `${suitName} · ${s2_points} 步`,
         effect: "",
         round: round,
         slot: 2,

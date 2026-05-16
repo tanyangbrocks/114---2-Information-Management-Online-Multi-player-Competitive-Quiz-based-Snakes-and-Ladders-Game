@@ -400,7 +400,7 @@ function drawServerCard(slot: 1 | 2, round: number): GameCard {
 
   return {
     id: `card_srv_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-    name: `${suitName} [${suit}] · ${points} 步`,
+    name: `${suitName} · ${points} 步`,
     points,
     effect: "",
     slot,

@@ -103,7 +103,7 @@ export function HostPlayerTable({ game, players, skillActions, isArbitrating }: 
                           const suitMap: Record<string, string> = { S: 'h', C: 'ch', D: 'hu', H: 'st' };
                           return (
                             <div key={c.id} className="relative group w-8 h-12 shadow-sm rounded-md overflow-hidden border border-milky-beige/30">
-                              <img src={`/media/picture/card/card_${suitMap[c.suit]}_${c.points}.png`} alt={c.suit} className="w-full h-full object-cover" />
+                              <img src={`https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/card/card_${suitMap[c.suit]}_${c.points}.png`} alt={c.suit} className="w-full h-full object-cover" />
                               {c.is_used && <div className="absolute inset-0 bg-black/40" />}
                             </div>
                           );

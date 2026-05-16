@@ -635,7 +635,7 @@ export function HostGameClient({ params }: Props) {
                       return (
                       <div key={suit} className="pudding-card !bg-white border-milky-beige/50 flex flex-col items-center gap-3">
                         <div className="w-16 h-24 rounded-lg overflow-hidden shadow-sm">
-                          <img src={`/media/picture/card/card_${suitMap[suit]}_1.png`} alt={suit} className="w-full h-full object-cover" />
+                          <img src={`https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/card/card_${suitMap[suit]}_1.png`} alt={suit} className="w-full h-full object-cover" />
                         </div>
                         <div className="flex items-center gap-4">
                           <button 

@@ -925,10 +925,10 @@ export function PlayClient({ params }: Props) {
       <aside className="w-full max-w-sm space-y-6 pudding-card !bg-milky-white/50 lg:sticky lg:top-8 border-none shadow-none">
         <div className="flex items-center gap-3"><div className="h-10 w-10 rounded-[1.2rem] bg-milky-brown text-white flex items-center justify-center shadow-lg"><Heart className="h-5 w-5" /></div><h2 className="text-xl font-black text-milky-brown tracking-tighter">我的卡池</h2></div>
         <div className="grid grid-cols-4 gap-3 rounded-[2rem] bg-white p-5 shadow-sm border border-milky-beige/30 text-center">
-          <div className="flex flex-col items-center gap-1"><img src="/media/picture/icon/h.png" alt="S" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-brown">{suitCounts.S}</p></div>
-          <div className="flex flex-col items-center gap-1"><img src="/media/picture/icon/ch.png" alt="C" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-brown">{suitCounts.C}</p></div>
-          <div className="flex flex-col items-center gap-1"><img src="/media/picture/icon/hu.png" alt="D" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-accent">{suitCounts.D}</p></div>
-          <div className="flex flex-col items-center gap-1"><img src="/media/picture/icon/st.png" alt="H" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-accent">{suitCounts.H}</p></div>
+          <div className="flex flex-col items-center gap-1"><img src="https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/h.png" alt="S" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-brown">{suitCounts.S}</p></div>
+          <div className="flex flex-col items-center gap-1"><img src="https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/ch.png" alt="C" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-brown">{suitCounts.C}</p></div>
+          <div className="flex flex-col items-center gap-1"><img src="https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/hu.png" alt="D" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-accent">{suitCounts.D}</p></div>
+          <div className="flex flex-col items-center gap-1"><img src="https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/st.png" alt="H" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-accent">{suitCounts.H}</p></div>
         </div>
         {self.cards.length === 0 ? <div className="py-20 text-center rounded-[3rem] border-4 border-dashed border-milky-beige/30"><p className="text-xs font-black text-milky-brown/20 uppercase tracking-[0.3em]">No cards collected</p></div> : (
           <ul className="flex overflow-x-auto pb-4 custom-scrollbar gap-4 px-2">
@@ -938,7 +938,7 @@ export function PlayClient({ params }: Props) {
               if (c.id.includes("S2-")) sourceText = "來自重修舊好";
               
               const suitMap: Record<string, string> = { S: 'h', C: 'ch', D: 'hu', H: 'st' };
-              const cardImgSrc = `/media/picture/card/card_${suitMap[c.suit]}_${c.points}.png`;
+              const cardImgSrc = `https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/card/card_${suitMap[c.suit]}_${c.points}.png`;
               
               return (
                 <li key={c.id} className="shrink-0 flex flex-col items-center gap-2">
@@ -982,7 +982,7 @@ export function PlayClient({ params }: Props) {
                   const suitMap: Record<string, string> = { S: 'h', C: 'ch', D: 'hu', H: 'st' };
                   return (
                   <button key={s} onClick={() => setS2Selection(prev => ({ ...prev, suit: s }))} className={`py-3 flex justify-center items-center rounded-xl border-2 transition-all ${s2Selection.suit === s ? "border-milky-accent bg-milky-accent/10" : "border-milky-beige bg-milky-white hover:border-milky-apricot"}`}>
-                    <img src={`/media/picture/icon/${suitMap[s]}.png`} alt={s} className="w-8 h-8 object-contain" />
+                    <img src={`https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/${suitMap[s]}.png`} alt={s} className="w-8 h-8 object-contain" />
                   </button>
                 )})}
               </div>

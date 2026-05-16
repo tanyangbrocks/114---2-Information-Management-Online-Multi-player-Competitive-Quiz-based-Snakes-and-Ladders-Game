@@ -38,7 +38,7 @@ export function useCardDraw() {
       const points = randomInt(1, 4);
       return {
         id: newId(),
-        name: `${suitName} [${randomSuit}] · ${points} 步`,
+        name: `${suitName} · ${points} 步`,
         points,
         effect: "",
         slot: 1,
@@ -50,7 +50,7 @@ export function useCardDraw() {
     const points = randomInt(6, 8);
     return {
       id: newId(),
-      name: `${suitName} [${randomSuit}] · ${points} 步`,
+      name: `${suitName} · ${points} 步`,
       points,
       effect: "",
       slot: 2,
