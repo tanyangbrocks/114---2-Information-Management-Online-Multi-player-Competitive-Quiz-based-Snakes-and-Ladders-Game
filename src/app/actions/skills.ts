@@ -2,6 +2,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import type { SkillActionType, GameCard, Suit } from "@/types/game";
+import { addGameEvent } from "@/app/actions/events";
 
 
 
@@ -118,6 +119,8 @@ export async function castSkill(
           return { success: false, error: "寫入技能動作失敗: " + insertErr.message };
         }
       }
+      
+      void addGameEvent(gameId, round, `【${player.name}】決定【重修舊好】，祝他好運！`, "skill");
       return { success: true };
     }
 
@@ -157,8 +160,11 @@ export async function castSkill(
         await supabase.from("players").update({ cards }).eq("id", playerId);
         return { success: false, error: "寫入技能動作失敗: " + retryErr.message };
       }
-      await supabase.from("players").update({ cards }).eq("id", playerId);
       return { success: false, error: "寫入技能動作失敗: " + insertErr.message };
+    }
+
+    if (actionType === "U-3") {
+      void addGameEvent(gameId, round, `【${player.name}】認為【梭哈是一種智慧】，祝你好運！`, "skill");
     }
 
     return { success: true };

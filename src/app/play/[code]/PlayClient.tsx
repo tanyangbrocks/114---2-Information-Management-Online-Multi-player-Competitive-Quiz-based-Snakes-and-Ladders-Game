@@ -315,6 +315,7 @@ export function PlayClient({ params }: Props) {
 
   const [pendingCounter, setPendingCounter] = useState<{ id: string, action_type: string } | null>(null);
   const [snakeTarget, setSnakeTarget] = useState<{ position: number, starsGained: number, cards: GameCard[] } | null>(null);
+  const [counterTimer, setCounterTimer] = useState<number | null>(null);
 
   const [s2Selection, setS2Selection] = useState<{
     isOpen: boolean;
@@ -322,6 +323,39 @@ export function PlayClient({ params }: Props) {
     points: number | null;
     triggeredByActionId?: string;
   }>({ isOpen: false, suit: null, points: null });
+
+  // --- 攔截 / 遭遇危險 5秒倒計時邏輯 ---
+  useEffect(() => {
+    if (!isCounterPhase) {
+      setCounterTimer(null);
+      return;
+    }
+
+    setCounterTimer(5);
+
+    const interval = setInterval(() => {
+      setCounterTimer((prev) => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          clearInterval(interval);
+          
+          // 時間到自動拒絕 (否)
+          if (pendingCounter) {
+            void respondToSkillCounter(pendingCounter.id, false);
+          } else if (snakeTarget) {
+            const pos = snakeTarget.position;
+            const stars = snakeTarget.starsGained;
+            setSnakeTarget(null);
+            void performMove(pos, stars);
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isCounterPhase, pendingCounter?.id, !!snakeTarget, performMove]);
 
   useEffect(() => {
     if (!self || !skillActions) return;
@@ -688,7 +722,12 @@ export function PlayClient({ params }: Props) {
         {(needsAnswer || isCounterPhase) && (
           <div className="fixed inset-0 z-[90] flex items-center justify-center bg-milky-brown/60 p-4 backdrop-blur-sm transition-all">
             <MotionWrapper type="bounce" className="w-full max-w-sm">
-              <div className="pudding-card overflow-y-auto max-h-[90vh] shadow-2xl border-4 border-white">
+              <div className="pudding-card relative overflow-y-auto max-h-[90vh] shadow-2xl border-4 border-white">
+                {isCounterPhase && counterTimer !== null && (
+                  <div className="absolute top-4 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-milky-accent/10 border-2 border-milky-accent text-milky-accent text-lg font-black animate-pulse z-20">
+                    {counterTimer}s
+                  </div>
+                )}
                 {isCounterPhase && (
                   <div className="space-y-8 py-4 text-center">
                     <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-milky-apricot/20 text-milky-brown shadow-inner"><Sparkles className="h-12 w-12 animate-pulse" /></div>
@@ -790,6 +829,10 @@ export function PlayClient({ params }: Props) {
                         setSkillStage("target");
                       } else if (skillPreview.actionType === "C-1") {
                         setSkillStage("direction");
+                      } else if (skillPreview.actionType === "S-2") {
+                        setS2Selection({ isOpen: true, suit: null, points: null });
+                        setSkillStage("idle");
+                        setSkillPreview(null);
                       } else {
                         handleCastSkill(skillPreview);
                       }
@@ -925,9 +968,9 @@ export function PlayClient({ params }: Props) {
       <aside className="w-full max-w-sm space-y-6 pudding-card !bg-milky-white/50 lg:sticky lg:top-8 border-none shadow-none">
         <div className="flex items-center gap-3"><div className="h-10 w-10 rounded-[1.2rem] bg-milky-brown text-white flex items-center justify-center shadow-lg"><Heart className="h-5 w-5" /></div><h2 className="text-xl font-black text-milky-brown tracking-tighter">我的卡池</h2></div>
         <div className="grid grid-cols-4 gap-3 rounded-[2rem] bg-white p-5 shadow-sm border border-milky-beige/30 text-center">
-          <div className="flex flex-col items-center gap-1"><img src="https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/h.png" alt="S" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-brown">{suitCounts.S}</p></div>
-          <div className="flex flex-col items-center gap-1"><img src="https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/ch.png" alt="C" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-brown">{suitCounts.C}</p></div>
-          <div className="flex flex-col items-center gap-1"><img src="https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/hu.png" alt="D" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-accent">{suitCounts.D}</p></div>
+          <div className="flex flex-col items-center gap-1"><img src="https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/h.png" alt="S" className="w-9 h-9 object-contain scale-[1.5]" /><p className="text-lg font-black text-milky-brown">{suitCounts.S}</p></div>
+          <div className="flex flex-col items-center gap-1"><img src="https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/ch.png" alt="C" className="w-12 h-12 object-contain scale-[2.0]" /><p className="text-lg font-black text-milky-brown">{suitCounts.C}</p></div>
+          <div className="flex flex-col items-center gap-1"><img src="https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/hu.png" alt="D" className="w-7 h-7 object-contain scale-[1.2]" /><p className="text-lg font-black text-milky-accent">{suitCounts.D}</p></div>
           <div className="flex flex-col items-center gap-1"><img src="https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/st.png" alt="H" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-accent">{suitCounts.H}</p></div>
         </div>
         {self.cards.length === 0 ? <div className="py-20 text-center rounded-[3rem] border-4 border-dashed border-milky-beige/30"><p className="text-xs font-black text-milky-brown/20 uppercase tracking-[0.3em]">No cards collected</p></div> : (
@@ -943,7 +986,7 @@ export function PlayClient({ params }: Props) {
               return (
                 <li key={c.id} className="shrink-0 flex flex-col items-center gap-2">
                   <span className="text-[10px] font-black text-milky-brown/60 bg-milky-beige/30 px-3 py-1 rounded-full whitespace-nowrap shadow-sm">{sourceText}</span>
-                  <MotionWrapper type="bounce" className={`group relative overflow-hidden rounded-[2rem] border-2 shadow-sm transition-all w-32 h-48 ${c.is_used ? 'bg-milky-beige/10 border-milky-beige/30 grayscale-[0.8] opacity-60' : 'bg-white border-milky-beige hover:border-milky-apricot hover:scale-105'}`}>
+                  <MotionWrapper type="bounce" className={`group relative overflow-hidden rounded-[2rem] border-2 shadow-sm transition-all w-[115.2px] h-[172.8px] ${c.is_used ? 'bg-milky-beige/10 border-milky-beige/30 grayscale-[0.8] opacity-60' : 'bg-white border-milky-beige hover:border-milky-apricot hover:scale-105'}`}>
                     {c.is_used && (
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10">
                         <span className="text-[10px] font-black text-white bg-black/60 px-2 py-0.5 rounded-full tracking-widest">USED</span>

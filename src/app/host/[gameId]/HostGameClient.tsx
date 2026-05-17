@@ -12,6 +12,7 @@ import { Loader2, Radio, SkipForward, Trophy, Sparkles, LayoutDashboard, Gift, P
 import { giveCardsToPlayer, addBotToGame } from "@/app/actions/hostActions";
 import { useCardDraw } from "@/hooks/useCardDraw";
 import { MotionWrapper } from "@/components/MotionWrapper";
+import { addGameEvent } from "@/app/actions/events";
 import type { Suit, QuizChoice } from "@/types/game";
 
 type Props = {
@@ -90,6 +91,7 @@ export function HostGameClient({ params }: Props) {
         })
         .eq("id", game.id);
       if (upErr) throw upErr;
+      void addGameEvent(game.id, game.current_round, `開始【第 ${game.current_round} 回合】的答題！`, "system");
       await reload();
       await sendSignal();
     } catch (e) {
@@ -108,6 +110,7 @@ export function HostGameClient({ params }: Props) {
         .update({ phase: "between_rounds", current_round: 1 })
         .eq("id", game.id);
       if (upErr) throw upErr;
+      void addGameEvent(game.id, 1, `進入【第 1 回合】！`, "system");
       await reload();
       await sendSignal();
     } catch (e) {
@@ -123,6 +126,7 @@ export function HostGameClient({ params }: Props) {
     try {
       const { error: upErr } = await supabase.from("games").update({ phase: "reveal" }).eq("id", game.id);
       if (upErr) throw upErr;
+      void addGameEvent(game.id, game.current_round, `公佈【第 ${game.current_round} 回合】的答案！`, "system");
       await reload();
       await sendSignal();
     } catch (e) {
@@ -137,7 +141,7 @@ export function HostGameClient({ params }: Props) {
     if (game?.phase === "skill" && authorized && isArbitrating) {
         // 檢查是否有 pending 狀態的技能
         const hasPending = skillActions.some(a => a.status === "pending" || a.status === "ready");
-        const isWaiting = skillActions.some(a => a.status === "waiting_counter" || a.status === "waiting_choice");
+        const isWaiting = skillActions.some(a => a.status === "waiting_counter" || a.status === "waiting_choice" || a.status === "u1_climbing");
         
         if (hasPending && !isWaiting && busy === null) {
             const timer = setTimeout(async () => {
@@ -194,6 +198,10 @@ export function HostGameClient({ params }: Props) {
         .eq("id", game.id);
 
       if (upErr) throw upErr;
+
+      if (!finished) {
+        void addGameEvent(game.id, nextRound, `進入【第 ${nextRound} 回合】！`, "system");
+      }
 
       // 清除所有玩家的預測步數，為下一輪做準備
       await supabase.from("players").update({ predicted_steps: 0 }).eq("game_id", game.id);

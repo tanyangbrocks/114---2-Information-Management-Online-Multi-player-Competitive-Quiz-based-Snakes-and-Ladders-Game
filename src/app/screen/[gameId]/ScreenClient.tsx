@@ -8,6 +8,7 @@ import { BoardGrid } from "@/components/BoardGrid";
 import { ScreenPlayerList } from "@/components/ScreenPlayerList";
 import { MotionWrapper } from "@/components/MotionWrapper";
 import { rankPlayers } from "@/lib/game/ranking";
+import { BattleReport } from "@/components/BattleReport";
 
 type Props = {
   params: Promise<{ gameId: string }>;
@@ -113,17 +114,16 @@ export function ScreenClient({ params }: Props) {
             </div>
           ) : (
             <div className="w-full max-w-[800px] aspect-square flex items-center justify-center">
-               <BoardGrid
-                  players={players.map(p => ({
-                    ...p,
-                    // 利用一個臨時屬性將出發點傳遞下去（稍後需修改 BoardGrid 支援）
-                  }))}
-                  selfId=""
-                  phase={game.phase}
-                  currentRound={game.current_round}
-                  // 新增這項 prop，但 BoardGrid 需要能接受 map 或是改寫 PlayerToken
-                  animateFromPosMap={preSettlePositionsRef.current}
-               />
+                <BoardGrid
+                   players={players}
+                   selfId=""
+                   phase={game.phase}
+                   currentRound={game.current_round}
+                   animateFromPosMap={preSettlePositionsRef.current}
+                   skillActions={skillActions}
+                   gameId={game.id}
+                   isScreen={true}
+                />
             </div>
           )}
         </div>
@@ -132,6 +132,7 @@ export function ScreenClient({ params }: Props) {
           <ScreenPlayerList game={game} players={players} skillActions={skillActions} />
         </div>
       </div>
+      <BattleReport gameId={game.id} />
     </main>
   );
 }

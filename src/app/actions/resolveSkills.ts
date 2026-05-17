@@ -4,6 +4,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { GameCard, Suit, SkillActionType, PlayerRow, SkillAction } from "@/types/game";
 import { countSuits } from "@/lib/game/skillEngine";
 import { ESCALATORS, moveBySteps } from "@/lib/game/boardEngine";
+import { addGameEvent } from "@/app/actions/events";
 
 export async function startSkillResolution(gameId: string) {
   const supabase = createClient(
@@ -13,6 +14,7 @@ export async function startSkillResolution(gameId: string) {
 
   // 將遊戲階段改為 skill
   await supabase.from("games").update({ phase: "skill" }).eq("id", gameId);
+  void addGameEvent(gameId, 0, "所有人選擇技能吧！", "system"); // Round is ignored or we can get it, wait we don't have round here.
 }
 
 export async function resolveNextSkill(gameId: string, round: number) {
@@ -61,8 +63,10 @@ export async function resolveNextSkill(gameId: string, round: number) {
     }
 
     // 4. 無反制或不符反制條件，直接執行
-    await executeSkillEffect(supabase, action, players, round);
-    await supabase.from("skill_actions").update({ status: "resolved" }).eq("id", action.id);
+    const result = await executeSkillEffect(supabase, action, players, round);
+    const finalStatus = result?.statusOverride || "resolved";
+    const finalMetadata = result?.metadataOverride || action.metadata;
+    await supabase.from("skill_actions").update({ status: finalStatus, metadata: finalMetadata }).eq("id", action.id);
 
     // 5. 更新發動者的預計步數 (S/C 牌消耗後重算)
     if (caster) {
@@ -86,7 +90,7 @@ export async function resolveNextSkill(gameId: string, round: number) {
   }
 }
 
-async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction, players: PlayerRow[], round: number) {
+async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction, players: PlayerRow[], round: number): Promise<{ statusOverride?: string; metadataOverride?: any } | void> {
   const player = players.find(p => p.id === action.player_id);
   const target = players.find(p => p.id === action.target_player_id);
   if (!player) return;
@@ -135,7 +139,12 @@ async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction,
   if (action.action_type === "U-1") {
     const nextLadder = findNearestEscalator(player.position);
     if (nextLadder) {
-      await supabase.from("players").update({ position: nextLadder[1] }).eq("id", player.id);
+      // 1. 傳送到梯子底部
+      await supabase.from("players").update({ position: nextLadder[0] }).eq("id", player.id);
+      return {
+        statusOverride: "u1_climbing",
+        metadataOverride: { ...action.metadata, ladder_from: nextLadder[0], ladder_to: nextLadder[1] }
+      };
     }
   }
 
@@ -162,10 +171,10 @@ async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction,
       }
     } else if (randomEffect === "S-2") {
       // U-3 抽到 S-2：設為 waiting_choice，讓玩家端彈出選牌視窗
-      await supabase.from("skill_actions").update({
-        status: "waiting_choice",
-        metadata: { ...action.metadata, triggered_s2: true, random_effect: "S-2" }
-      }).eq("id", action.id);
+      return {
+        statusOverride: "waiting_choice",
+        metadataOverride: { ...action.metadata, triggered_s2: true, random_effect: "S-2" }
+      };
     } else if (randomEffect === "C-1") {
       const nextPos = Math.min(100, player.position + 3);
       await supabase.from("players").update({ position: nextPos }).eq("id", player.id);
@@ -175,7 +184,12 @@ async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction,
     } else if (randomEffect === "U-1") {
       const nextLadder = findNearestEscalator(player.position);
       if (nextLadder) {
-        await supabase.from("players").update({ position: nextLadder[1] }).eq("id", player.id);
+        // 1. 傳送到梯子底部
+        await supabase.from("players").update({ position: nextLadder[0] }).eq("id", player.id);
+        return {
+          statusOverride: "u1_climbing",
+          metadataOverride: { ...action.metadata, random_effect: "U-1", ladder_from: nextLadder[0], ladder_to: nextLadder[1] }
+        };
       }
     }
   }
@@ -243,6 +257,7 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
             .from("skill_actions")
             .update({ status: "waiting_counter" })
             .eq("id", action.id);
+          void addGameEvent(gameId, round, `【${target.name}】正在猶豫要不要阻擋【${action.action_type}】……`, "warning");
           return { success: true, waitingForCounter: true, actionId: action.id, targetName: target.name };
         }
       }
@@ -255,6 +270,7 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
           const dropIdx = Math.floor(Math.random() * available.length);
           const dropId = available[dropIdx].id;
           target.cards = tCards.map(c => c.id === dropId ? { ...c, is_used: true } : c);
+          void addGameEvent(gameId, round, `【${caster.name}】用【何老師的貓】發動【常數項微分】，讓【${target.name}】的一張卡牌被微分！`, "skill");
         }
       }
 
@@ -262,16 +278,19 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
       if (action.action_type === "C-1") {
         const dir = Number(action.metadata?.direction ?? 1);
         caster.position = Math.max(1, Math.min(100, caster.position + dir));
+        void addGameEvent(gameId, round, `【${caster.name}】用【邱老師的板書】發動【自我催眠】，睡夢中【${dir > 0 ? "往前" : "往後"}】了一格！`, "skill");
       }
       // C-2: 指定目標前進或後退
       if (action.action_type === "C-2" && target) {
         const dir = Number(action.metadata?.direction ?? -1);
         target.position = Math.max(1, Math.min(100, target.position + dir));
+        void addGameEvent(gameId, round, `【${caster.name}】用【邱老師的板書】發動【精神干擾】，讓【${target.name}】的玩家在混亂中【${dir > 0 ? "往前" : "往後"}】了一格！`, "skill");
       }
       // H-1: 自由前進
       if (action.action_type === "H-1") {
         const r = rankMap.get(caster.id) || 1;
         caster.position = Math.min(100, caster.position + r);
+        void addGameEvent(gameId, round, `【${caster.name}】用【師大的網路結界】發動【按下空格鍵即可開始遊戲】，他能前進多遠呢？`, "skill");
       }
       // S-2: 由玩家端瞬發，批次仲裁中如出現應已是 resolved，直接略過
       // (已消耗卡片在 castSkill 中處理，不在此重複執行)
@@ -281,13 +300,18 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
       // U-1: 磁力傳送
       if (action.action_type === "U-1") {
         const nextLadder = findNearestEscalator(caster.position);
-        if (nextLadder) caster.position = nextLadder[1];
+        if (nextLadder) {
+          caster.position = nextLadder[1];
+          void addGameEvent(gameId, round, `【${caster.name}】發動組合技【遲到前的幻想】，傳送到最近的【升天電梯】！`, "skill");
+          void addGameEvent(gameId, round, `【${caster.name}】利用【遲到前的幻想】搭乘【升天電梯】，從【第 ${nextLadder[0]} 格】攀升至【第 ${nextLadder[1]} 格】！`, "movement");
+        }
       }
       // U-2: 位置調換
       if (action.action_type === "U-2" && target) {
         const temp = caster.position;
         caster.position = target.position;
         target.position = temp;
+        void addGameEvent(gameId, round, `【${caster.name}】發動組合技【天手力】，與【${target.name}】的位置互換！`, "skill");
       }
       // U-3: 梭哈是一種智慧
       if (action.action_type === "U-3") {
@@ -340,6 +364,7 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
         const heartCard = pCards.find((c: GameCard) => !c.is_used && c.suit === "H");
         const hasHeart = !!heartCard;
 
+        const originalPos = p.position;
         // 執行移動 (傳入 ignoreEel 為 hasHeart)
         const { position: nextPos, starsGained, usedIgnoreEel } = moveBySteps(p.position, steps, {
           ignoreEel: hasHeart
@@ -348,6 +373,18 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
         // 如果移動過程中真的觸發了保命 (遇到了電鰻但被忽略)，則消耗那張紅心牌
         if (usedIgnoreEel && heartCard) {
           (heartCard as GameCard).is_used = true;
+          void addGameEvent(gameId, round, `【${p.name}】用【師大的網路結界】發動【回應時間過長】，透過網路卡頓從蛇口驚險逃脫！`, "skill");
+        } else if (nextPos < originalPos + steps && nextPos !== 100) {
+          // 如果掉下去（除了因為爬梯子），一般是由於電鰻
+          void addGameEvent(gameId, round, `【${p.name}】遭遇【電鰻】，從【第 ${originalPos + steps} 格】掉落到【第 ${nextPos} 格】！`, "warning");
+        }
+
+        if (nextPos > originalPos + steps) {
+          void addGameEvent(gameId, round, `【${p.name}】搭乘【升天電梯】，從【第 ${originalPos + steps} 格】攀升至【第 ${nextPos} 格】！`, "movement");
+        }
+
+        if (starsGained > 0) {
+          void addGameEvent(gameId, round, `【${p.name}】成功逃離荒島，獲得一顆【榮譽之星】！`, "movement");
         }
 
         p.position = nextPos;
@@ -375,6 +412,7 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
 
     // 6. 更新遊戲狀態到 settle
     const { error: gameErr } = await supabase.from("games").update({ phase: "settle" }).eq("id", gameId);
+    void addGameEvent(gameId, round, "所有人開始移動！", "system");
     if (gameErr) return { success: false, error: "進入結算階段失敗: " + gameErr.message };
 
     return { success: true };
@@ -453,9 +491,43 @@ export async function respondToSkillCounter(actionId: string, useCounter: boolea
 
       await supabase.from("players").update({ cards: updatedCards }).eq("id", target.id);
       await supabase.from("skill_actions").update({ status: "cancelled" }).eq("id", actionId);
+      void addGameEvent(action.game_id, action.round, `【${target.name}】用【黃老師的水】發動【白板防禦】，化解了這場威脅！`, "skill");
     } else {
       await supabase.from("skill_actions").update({ status: "ready" }).eq("id", actionId);
     }
+
+    return { success: true };
+  } catch (e: unknown) {
+    return { success: false, error: e instanceof Error ? e.message : "未知錯誤" };
+  }
+}
+
+export async function completeU1Climb(actionId: string) {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { data: action, error: aErr } = await supabase
+      .from("skill_actions")
+      .select("*")
+      .eq("id", actionId)
+      .single();
+
+    if (aErr || !action || action.status !== "u1_climbing") {
+      return { success: false, error: "找不到該爬梯行動" };
+    }
+
+    const { ladder_to } = action.metadata || {};
+    if (ladder_to === undefined) {
+      return { success: false, error: "缺少爬梯終點資訊" };
+    }
+
+    // 1. 將玩家設定在梯子終點
+    await supabase.from("players").update({ position: ladder_to }).eq("id", action.player_id);
+
+    // 2. 將行動設為 resolved
+    await supabase.from("skill_actions").update({ status: "resolved" }).eq("id", actionId);
 
     return { success: true };
   } catch (e: unknown) {

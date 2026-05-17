@@ -7,14 +7,17 @@ import { useEffect, useMemo, useRef } from "react";
 import { ESCALATORS, EELS, bounceOverHundred, applyConnectors } from "@/lib/game/boardEngine";
 import { motion, useAnimation } from "framer-motion";
 
+import { completeU1Climb } from "@/app/actions/resolveSkills";
+import type { SkillAction } from "@/types/game";
+
 /** 計算格子在 10x10 棋盤上的百分比座標 (x, y)，回傳值為 0-100 */
 function getCellCoords(n: number) {
   const r = Math.floor((n - 1) / 10);
   const c = (n - 1) % 10;
   const x = r % 2 === 0 ? c : 9 - c;
   const y = 9 - r;
-  // 再次微調：向下調整 (+0.5)，向右調整 (+0.5)
-  return { x: x * 10 + 6.5, y: y * 10 - 1.5 };
+  // 使用絕對中心點 5%，確保在 10x10 棋盤中精準對齊
+  return { x: x * 10 + 5, y: y * 10 + 5 };
 }
 
 type Props = {
@@ -30,6 +33,9 @@ type Props = {
   animateFromPos?: number | null;
   /** 動畫出發點地圖：針對大屏端全體玩家 */
   animateFromPosMap?: Record<string, number>;
+  skillActions?: SkillAction[];
+  gameId?: string;
+  isScreen?: boolean;
 };
 
 export function BoardGrid({
@@ -43,6 +49,9 @@ export function BoardGrid({
   onMoveComplete,
   animateFromPos,
   animateFromPosMap,
+  skillActions,
+  gameId,
+  isScreen = false,
 }: Props) {
   const { buildZigzagGrid } = useSnakeLadderBoard();
   const grid = buildZigzagGrid();
@@ -90,6 +99,9 @@ export function BoardGrid({
             manualTarget={p.id === selfId ? manualTarget : null}
             onMoveComplete={onMoveComplete}
             animateFromPos={animateFromPosMap ? animateFromPosMap[p.id] : (p.id === selfId ? animateFromPos : null)}
+            skillActions={skillActions}
+            gameId={gameId}
+            isScreen={isScreen}
           />
         ))}
       </div>
@@ -114,6 +126,9 @@ function PlayerToken({
   manualTarget,
   onMoveComplete,
   animateFromPos,
+  skillActions,
+  gameId,
+  isScreen = false,
 }: {
   player: PlayerRow;
   isSelf: boolean;
@@ -125,6 +140,9 @@ function PlayerToken({
   manualTarget?: number | null;
   onMoveComplete?: () => void;
   animateFromPos?: number | null;
+  skillActions?: SkillAction[];
+  gameId?: string;
+  isScreen?: boolean;
 }) {
   const controls = useAnimation();
   const lastPosRef = useRef(player.position);
@@ -141,8 +159,66 @@ function PlayerToken({
   const isMovingRef = useRef(false);
   // 紀錄「這回合的這個目標位置」是否已播過動畫，避免 effect 重複觸發
   const processedRef = useRef<{ round: number; pos: number } | null>(null);
+  const climbingActionProcessedRef = useRef<string | null>(null);
+
+  // --- U-1 (遲到前的幻想) 特殊爬梯動畫處理 ---
+  useEffect(() => {
+    if (phase !== "skill" || !skillActions) return;
+    const activeClimb = skillActions.find(
+      a => a.player_id === player.id && a.status === "u1_climbing" && a.round === currentRound
+    );
+    if (!activeClimb) return;
+
+    if (climbingActionProcessedRef.current === activeClimb.id) return;
+    climbingActionProcessedRef.current = activeClimb.id;
+
+    const { ladder_from, ladder_to } = activeClimb.metadata || {};
+    if (ladder_from === undefined || ladder_to === undefined) return;
+
+    const animateClimb = async () => {
+      isMovingRef.current = true;
+
+      // 1. 瞬間移動到手扶梯底部 (梯子起點)
+      const startCoords = getCellCoords(ladder_from);
+      controls.set({ left: `${startCoords.x}%`, top: `${startCoords.y}%` });
+      lastPosRef.current = ladder_from;
+
+      // 2. 播放爬梯子的移動動畫 (slide)
+      const path = applyConnectors(ladder_from).path; // 例如從 9 到 31 的路徑
+      const durationPerSegment = path.length > 1 ? 1.5 / (path.length - 1) : 1.5;
+
+      for (let i = 1; i < path.length; i++) {
+        const coords = getCellCoords(path[i]);
+        await controls.start({
+          left: `${coords.x}%`,
+          top: `${coords.y}%`,
+          transition: { duration: durationPerSegment, ease: "easeInOut" },
+        });
+      }
+
+      lastPosRef.current = ladder_to;
+      isMovingRef.current = false;
+
+      // 3. 如果是大螢幕，等爬完了就呼叫 completeU1Climb 更新玩家至梯子終點，並將技能設為 resolved
+      if (isScreen && gameId) {
+        try {
+          await completeU1Climb(activeClimb.id);
+        } catch (e) {
+          console.error("Failed to complete U-1 climb action:", e);
+        }
+      }
+    };
+
+    void animateClimb();
+  }, [phase, skillActions, player.id, currentRound, controls, isScreen, gameId]);
 
   useEffect(() => {
+    // 若為爬梯動畫中，跳過標準走路動畫，以防產生走路動作
+    const isClimbing = skillActions?.some(
+      a => a.player_id === player.id && a.status === "u1_climbing" && a.round === currentRound
+    );
+    if (isClimbing) return;
+
     const isAlreadyProcessed =
       processedRef.current?.round === currentRound &&
       processedRef.current?.pos === player.position;
@@ -209,9 +285,9 @@ function PlayerToken({
         }
       }
 
-      // 走步動畫：總計 1 秒
+      // 走步動畫：每 0.25 秒走一格
       if (steppingPath.length > 0) {
-        const durationPerStep = 1 / steppingPath.length;
+        const durationPerStep = 0.25;
         for (const cell of steppingPath) {
           const coords = getCellCoords(cell);
           await controls.start({
