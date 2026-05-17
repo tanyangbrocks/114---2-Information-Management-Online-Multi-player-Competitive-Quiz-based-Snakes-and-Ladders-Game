@@ -423,30 +423,6 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
 
 // --- Helpers ---
 
-export function drawServerCard(slot: 1 | 2, round: number): GameCard {
-  const suits: Suit[] = ["S", "C", "D", "H"];
-  const suit = suits[Math.floor(Math.random() * 4)];
-  const points = slot === 1 ? Math.floor(Math.random() * 4) + 1 : Math.floor(Math.random() * 3) + 6;
-
-  const suitNames: Record<Suit, string> = {
-    S: "何老師的貓",
-    C: "邱老師的板書",
-    D: "黃老師的水",
-    H: "師大的網路結界"
-  };
-  const suitName = suitNames[suit];
-
-  return {
-    id: `card_srv_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-    name: `${suitName} · ${points} 步`,
-    points,
-    effect: "",
-    slot,
-    round,
-    suit,
-    is_used: false
-  };
-}
 
 function findNearestEscalator(currentPos: number) {
   const candidates = ESCALATORS.filter(([start]) => start > currentPos);
