@@ -172,8 +172,9 @@ function PlayerToken({
     if (climbingActionProcessedRef.current === activeClimb.id) return;
     climbingActionProcessedRef.current = activeClimb.id;
 
-    const { ladder_from, ladder_to } = activeClimb.metadata || {};
-    if (ladder_from === undefined || ladder_to === undefined) return;
+    const ladder_from = activeClimb.metadata?.ladder_from as number | undefined;
+    const ladder_to = activeClimb.metadata?.ladder_to as number | undefined;
+    if (typeof ladder_from !== "number" || typeof ladder_to !== "number") return;
 
     const animateClimb = async () => {
       isMovingRef.current = true;
