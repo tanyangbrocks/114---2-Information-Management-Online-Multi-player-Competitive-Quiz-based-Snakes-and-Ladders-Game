@@ -43,6 +43,7 @@ export type GameRow = {
   question_epoch: number;
   created_at: string;
   updated_at: string;
+  hide_host_qr?: boolean;
 };
 
 export type PlayerRow = {

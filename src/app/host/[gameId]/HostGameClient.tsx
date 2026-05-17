@@ -215,6 +215,21 @@ export function HostGameClient({ params }: Props) {
     }
   };
 
+  const toggleHideHostQr = async () => {
+    if (!game) return;
+    try {
+      const { error: upErr } = await supabase
+        .from("games")
+        .update({ hide_host_qr: !game.hide_host_qr })
+        .eq("id", game.id);
+      if (upErr) throw upErr;
+      await reload();
+      await sendSignal();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "切換失敗");
+    }
+  };
+
   const handleGiveCards = async () => {
     if (!selectedGiftPlayerId) return;
     setBusy("gift");
@@ -398,6 +413,17 @@ export function HostGameClient({ params }: Props) {
                 >
                   <Gift className="h-5 w-5" />
                   發放物資
+                </button>
+                <button
+                  onClick={toggleHideHostQr}
+                  className={`pudding-button border-2 flex items-center gap-2 transition-all ${
+                    game.hide_host_qr 
+                      ? "border-red-400 bg-red-50 text-red-500 hover:bg-red-100" 
+                      : "border-gray-400 bg-white text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  <X className="h-5 w-5" />
+                  {game.hide_host_qr ? "顯示後臺 QR Code" : "隱藏後臺 QR Code"}
                 </button>
                 <button
                   onClick={startGame}

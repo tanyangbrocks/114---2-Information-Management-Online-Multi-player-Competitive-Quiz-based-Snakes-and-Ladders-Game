@@ -58,7 +58,8 @@ export function mapGameRow(row: Record<string, unknown>): GameRow {
     phase: coercePhase(row.phase),
     question_epoch: Number(row.question_epoch),
     created_at: String(row.created_at),
-    updated_at: String(row.updated_at)
+    updated_at: String(row.updated_at),
+    hide_host_qr: row.hide_host_qr !== undefined ? Boolean(row.hide_host_qr) : false
   };
 }
 

@@ -87,7 +87,7 @@ export function ScreenClient({ params }: Props) {
         <div className="flex-1 flex flex-col items-center justify-center relative min-h-[500px] lg:min-h-0 bg-white/40 rounded-[3rem] border-2 border-milky-beige/40 shadow-inner overflow-hidden p-8">
           {game.phase === "lobby" ? (
             <div className="w-full max-w-4xl">
-              <QRInvitePanel inviteUrl={playerUrl} inviteCode={game.invite_code} hostUrl={hostUrl} />
+              <QRInvitePanel inviteUrl={playerUrl} inviteCode={game.invite_code} hostUrl={hostUrl} hideHostQr={game.hide_host_qr} />
             </div>
           ) : game.phase === "finished" ? (
             <MotionWrapper type="bounce" className="text-center w-full max-w-3xl">

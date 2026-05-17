@@ -8,9 +8,10 @@ type Props = {
   inviteUrl: string;
   inviteCode: string;
   hostUrl?: string;
+  hideHostQr?: boolean;
 };
 
-export function QRInvitePanel({ inviteUrl, inviteCode, hostUrl }: Props) {
+export function QRInvitePanel({ inviteUrl, inviteCode, hostUrl, hideHostQr }: Props) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [hostDataUrl, setHostDataUrl] = useState<string | null>(null);
 
@@ -62,7 +63,7 @@ export function QRInvitePanel({ inviteUrl, inviteCode, hostUrl }: Props) {
           )}
         </div>
         {hostUrl && (
-          <div className="flex flex-1 flex-col items-center justify-center rounded-3xl bg-white p-6 shadow-inner border-2 border-milky-apricot/30">
+          <div className="flex flex-1 flex-col items-center justify-center rounded-3xl bg-white p-6 shadow-inner border-2 border-milky-apricot/30 relative overflow-hidden">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-milky-apricot/60 mb-2">HOST CONTROL</p>
             {hostDataUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -76,6 +77,15 @@ export function QRInvitePanel({ inviteUrl, inviteCode, hostUrl }: Props) {
             <div className="mt-4 rounded-xl border border-dashed border-milky-apricot/40 bg-milky-apricot/10 p-2 text-[10px] font-bold text-milky-brown break-all text-center">
               {hostUrl}
             </div>
+
+            {/* 隱藏遮罩 */}
+            {hideHostQr && (
+              <div className="absolute inset-0 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center z-10 transition-all duration-300">
+                <p className="text-white text-2xl font-black tracking-widest bg-red-500/20 px-6 py-3 rounded-2xl border-2 border-red-500 animate-pulse">
+                  已隱藏
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
