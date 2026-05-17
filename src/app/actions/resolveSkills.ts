@@ -3,7 +3,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { GameCard, Suit, SkillActionType, PlayerRow, SkillAction } from "@/types/game";
 import { countSuits } from "@/lib/game/skillEngine";
-import { ESCALATORS, moveBySteps } from "@/lib/game/boardEngine";
+import { ESCALATORS, EELS, moveBySteps, bounceOverHundred, getJumpTarget } from "@/lib/game/boardEngine";
 import { addGameEvent } from "@/app/actions/events";
 
 export async function startSkillResolution(gameId: string) {
@@ -90,7 +90,7 @@ export async function resolveNextSkill(gameId: string, round: number) {
   }
 }
 
-async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction, players: PlayerRow[], _round: number): Promise<{ statusOverride?: string; metadataOverride?: Record<string, unknown> } | void> {
+async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction, players: PlayerRow[], round: number): Promise<{ statusOverride?: string; metadataOverride?: Record<string, unknown> } | void> {
   const player = players.find(p => p.id === action.player_id);
   const target = players.find(p => p.id === action.target_player_id);
   if (!player) return;
@@ -107,9 +107,18 @@ async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction,
     const tCards = target.cards as GameCard[];
     const available = tCards.filter(c => !c.is_used);
     if (available.length > 0) {
-      const dropId = available[Math.floor(Math.random() * available.length)].id;
-      const updatedCards = tCards.map(c => c.id === dropId ? { ...c, is_used: true } : c);
+      const dropCard = available[Math.floor(Math.random() * available.length)];
+      const updatedCards = tCards.map(c => c.id === dropCard.id ? { ...c, is_used: true } : c);
       await supabase.from("players").update({ cards: updatedCards }).eq("id", target.id);
+      if (action.metadata?.from_u3) {
+        void addGameEvent(action.game_id, round, `【${player.name}】梭哈獲得【常數項微分】效果！`, "skill");
+        void addGameEvent(action.game_id, round, `【${player.name}】發動【常數項微分】效果，讓【${target.name}】的一張卡牌被微分！`, "skill");
+      } else {
+        void addGameEvent(action.game_id, round, `【${player.name}】用【何老師的貓】發動【常數項微分】，讓【${target.name}】的一張卡牌被微分！`, "skill");
+      }
+      return {
+        metadataOverride: { ...action.metadata, discarded_card: dropCard }
+      };
     }
   }
 
@@ -122,18 +131,38 @@ async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction,
     const dir = (action.metadata?.direction as number) || 1;
     const nextPos = Math.max(1, Math.min(100, player.position + dir));
     await supabase.from("players").update({ position: nextPos }).eq("id", player.id);
+    if (action.metadata?.from_u3) {
+      void addGameEvent(action.game_id, round, `【${player.name}】梭哈獲得【自我催眠】效果！`, "skill");
+      void addGameEvent(action.game_id, round, `【${player.name}】發動【自我催眠】效果，睡夢中【${dir > 0 ? "往前" : "往後"}】了一格！`, "skill");
+    } else {
+      void addGameEvent(action.game_id, round, `【${player.name}】用【邱老師的板書】發動【自我催眠】，睡夢中【${dir > 0 ? "往前" : "往後"}】了一格！`, "skill");
+    }
   }
 
   if (action.action_type === "C-2" && target) {
     const dir = (action.metadata?.direction as number) || -1;
     const nextPos = Math.max(1, Math.min(100, target.position + dir));
     await supabase.from("players").update({ position: nextPos }).eq("id", target.id);
+    if (action.metadata?.from_u3) {
+      void addGameEvent(action.game_id, round, `【${player.name}】梭哈獲得【精神干擾】效果！`, "skill");
+      void addGameEvent(action.game_id, round, `【${player.name}】發動【精神干擾】效果，讓【${target.name}】的玩家在混亂中【${dir > 0 ? "往前" : "往後"}】了一格！`, "skill");
+    } else {
+      void addGameEvent(action.game_id, round, `【${player.name}】用【邱老師的板書】發動【精神干擾】，讓【${target.name}】的玩家在混亂中【${dir > 0 ? "往前" : "往後"}】了一格！`, "skill");
+    }
   }
 
   if (action.action_type === "H-1") {
     const r = getRank(player.id) || 1;
     const nextPos = Math.min(100, player.position + r);
     await supabase.from("players").update({ position: nextPos }).eq("id", player.id);
+    if (action.metadata?.from_u3) {
+      void addGameEvent(action.game_id, round, `【${player.name}】梭哈獲得【按下空格鍵即可開始遊戲】效果！`, "skill");
+      void addGameEvent(action.game_id, round, `【${player.name}】發動【按下空格鍵即可開始遊戲】效果，他能前進多遠呢？`, "skill");
+      void addGameEvent(action.game_id, round, `【${player.name}】因為是第【${r}】名，前進了【${r}】格！`, "skill");
+    } else {
+      void addGameEvent(action.game_id, round, `【${player.name}】用【師大的網路結界】發動【按下空格鍵即可開始遊戲】，他能前進多遠呢？`, "skill");
+      void addGameEvent(action.game_id, round, `【${player.name}】因為是第【${r}】名，前進了【${r}】格！`, "skill");
+    }
   }
 
   if (action.action_type === "U-1") {
@@ -141,6 +170,14 @@ async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction,
     if (nextLadder) {
       // 1. 傳送到梯子底部
       await supabase.from("players").update({ position: nextLadder[0] }).eq("id", player.id);
+      if (action.metadata?.from_u3) {
+        void addGameEvent(action.game_id, round, `【${player.name}】梭哈獲得【遲到前的幻想】效果！`, "skill");
+        void addGameEvent(action.game_id, round, `【${player.name}】發動【遲到前的幻想】效果，傳送至最近的【升天電梯】！`, "skill");
+        void addGameEvent(action.game_id, round, `【${player.name}】利用【遲到前的幻想】搭乘【升天電梯】，從【第 ${nextLadder[0]} 格】攀升至【第 ${nextLadder[1]} 格】！`, "movement");
+      } else {
+        void addGameEvent(action.game_id, round, `【${player.name}】發動組合技【遲到前的幻想】，傳送到最近的【升天電梯】！`, "skill");
+        void addGameEvent(action.game_id, round, `【${player.name}】利用【遲到前的幻想】搭乘【升天電梯】，從【第 ${nextLadder[0]} 格】攀升至【第 ${nextLadder[1]} 格】！`, "movement");
+      }
       return {
         statusOverride: "u1_climbing",
         metadataOverride: { ...action.metadata, ladder_from: nextLadder[0], ladder_to: nextLadder[1] }
@@ -151,10 +188,11 @@ async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction,
   if (action.action_type === "U-2" && target) {
     await supabase.from("players").update({ position: target.position }).eq("id", player.id);
     await supabase.from("players").update({ position: player.position }).eq("id", target.id);
+    void addGameEvent(action.game_id, round, `【${player.name}】發動組合技【天手力】，與【${target.name}】的位置互換！`, "skill");
   }
 
   if (action.action_type === "U-3") {
-    const effects: SkillActionType[] = ["S-1", "S-2", "C-1", "H-1", "U-1"];
+    const effects: SkillActionType[] = ["S-1", "S-2", "C-1", "H-1", "U-1", "U-2"];
     const randomEffect = effects[Math.floor(Math.random() * effects.length)];
 
     if (randomEffect === "S-1") {
@@ -164,12 +202,23 @@ async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction,
         const tCards = actualTarget.cards as GameCard[];
         const available = tCards.filter(c => !c.is_used);
         if (available.length > 0) {
-          const dropId = available[Math.floor(Math.random() * available.length)].id;
-          const updatedCards = tCards.map(c => c.id === dropId ? { ...c, is_used: true } : c);
+          const dropCard = available[Math.floor(Math.random() * available.length)];
+          const updatedCards = tCards.map(c => c.id === dropCard.id ? { ...c, is_used: true } : c);
           await supabase.from("players").update({ cards: updatedCards }).eq("id", actualTarget.id);
+          void addGameEvent(action.game_id, round, `【${player.name}】梭哈獲得【常數項微分】效果！`, "skill");
+          void addGameEvent(action.game_id, round, `【${player.name}】發動【常數項微分】效果，讓【${actualTarget.name}】的一張卡牌被微分！`, "skill");
+          
+          // 更新 U-3 技能的 target_player_id，讓目標端能夠以 target_player_id === self.id 抓到這筆 resolved 動作
+          await supabase.from("skill_actions").update({ target_player_id: actualTarget.id }).eq("id", action.id);
+          
+          return {
+            metadataOverride: { ...action.metadata, random_effect: "S-1", discarded_card: dropCard }
+          };
         }
       }
     } else if (randomEffect === "S-2") {
+      void addGameEvent(action.game_id, round, `【${player.name}】梭哈獲得【重修舊好】效果！`, "skill");
+      void addGameEvent(action.game_id, round, `【${player.name}】發動【重修舊好】效果！`, "skill");
       // U-3 抽到 S-2：設為 waiting_choice，讓玩家端彈出選牌視窗
       return {
         statusOverride: "waiting_choice",
@@ -178,18 +227,36 @@ async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction,
     } else if (randomEffect === "C-1") {
       const nextPos = Math.min(100, player.position + 3);
       await supabase.from("players").update({ position: nextPos }).eq("id", player.id);
+      void addGameEvent(action.game_id, round, `【${player.name}】梭哈獲得【自我催眠】效果！`, "skill");
+      void addGameEvent(action.game_id, round, `【${player.name}】發動【自我催眠】效果，睡夢中前進了 3 格！`, "skill");
     } else if (randomEffect === "H-1") {
       const nextPos = Math.min(100, player.position + 10);
       await supabase.from("players").update({ position: nextPos }).eq("id", player.id);
+      void addGameEvent(action.game_id, round, `【${player.name}】梭哈獲得【按下空格鍵即可開始遊戲】效果！`, "skill");
+      void addGameEvent(action.game_id, round, `【${player.name}】發動【按下空格鍵即可開始遊戲】效果，前進了 10 格！`, "skill");
     } else if (randomEffect === "U-1") {
       const nextLadder = findNearestEscalator(player.position);
       if (nextLadder) {
         // 1. 傳送到梯子底部
         await supabase.from("players").update({ position: nextLadder[0] }).eq("id", player.id);
+        void addGameEvent(action.game_id, round, `【${player.name}】梭哈獲得【遲到前的幻想】效果！`, "skill");
+        void addGameEvent(action.game_id, round, `【${player.name}】發動【遲到前的幻想】效果，傳送至最近的【升天電梯】！`, "skill");
+        void addGameEvent(action.game_id, round, `【${player.name}】利用【遲到前的幻想】搭乘【升天電梯】，從【第 ${nextLadder[0]} 格】攀升至【第 ${nextLadder[1]} 格】！`, "movement");
         return {
           statusOverride: "u1_climbing",
           metadataOverride: { ...action.metadata, random_effect: "U-1", ladder_from: nextLadder[0], ladder_to: nextLadder[1] }
         };
+      }
+    } else if (randomEffect === "U-2") {
+      const otherPlayers = players.filter(p => p.id !== player.id);
+      const actualTarget = target || (otherPlayers.length > 0 ? otherPlayers[Math.floor(Math.random() * otherPlayers.length)] : null);
+      if (actualTarget) {
+        const casterPos = player.position;
+        const targetPos = actualTarget.position;
+        await supabase.from("players").update({ position: targetPos }).eq("id", player.id);
+        await supabase.from("players").update({ position: casterPos }).eq("id", actualTarget.id);
+        void addGameEvent(action.game_id, round, `【${player.name}】梭哈獲得【天手力】效果！`, "skill");
+        void addGameEvent(action.game_id, round, `【${player.name}】發動【天手力】效果，與【${actualTarget.name}】的位置互換！`, "skill");
       }
     }
   }
@@ -270,7 +337,12 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
           const dropIdx = Math.floor(Math.random() * available.length);
           const dropId = available[dropIdx].id;
           target.cards = tCards.map(c => c.id === dropId ? { ...c, is_used: true } : c);
-          void addGameEvent(gameId, round, `【${caster.name}】用【何老師的貓】發動【常數項微分】，讓【${target.name}】的一張卡牌被微分！`, "skill");
+          if (action.metadata?.from_u3) {
+            void addGameEvent(gameId, round, `【${caster.name}】梭哈獲得【常數項微分】效果！`, "skill");
+            void addGameEvent(gameId, round, `【${caster.name}】發動【常數項微分】效果，讓【${target.name}】的一張卡牌被微分！`, "skill");
+          } else {
+            void addGameEvent(gameId, round, `【${caster.name}】用【何老師的貓】發動【常數項微分】，讓【${target.name}】的一張卡牌被微分！`, "skill");
+          }
         }
       }
 
@@ -278,19 +350,36 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
       if (action.action_type === "C-1") {
         const dir = Number(action.metadata?.direction ?? 1);
         caster.position = Math.max(1, Math.min(100, caster.position + dir));
-        void addGameEvent(gameId, round, `【${caster.name}】用【邱老師的板書】發動【自我催眠】，睡夢中【${dir > 0 ? "往前" : "往後"}】了一格！`, "skill");
+        if (action.metadata?.from_u3) {
+          void addGameEvent(gameId, round, `【${caster.name}】梭哈獲得【自我催眠】效果！`, "skill");
+          void addGameEvent(gameId, round, `【${caster.name}】發動【自我催眠】效果，睡夢中【${dir > 0 ? "往前" : "往後"}】了一格！`, "skill");
+        } else {
+          void addGameEvent(gameId, round, `【${caster.name}】用【邱老師的板書】發動【自我催眠】，睡夢中【${dir > 0 ? "往前" : "往後"}】了一格！`, "skill");
+        }
       }
       // C-2: 指定目標前進或後退
       if (action.action_type === "C-2" && target) {
         const dir = Number(action.metadata?.direction ?? -1);
         target.position = Math.max(1, Math.min(100, target.position + dir));
-        void addGameEvent(gameId, round, `【${caster.name}】用【邱老師的板書】發動【精神干擾】，讓【${target.name}】的玩家在混亂中【${dir > 0 ? "往前" : "往後"}】了一格！`, "skill");
+        if (action.metadata?.from_u3) {
+          void addGameEvent(gameId, round, `【${caster.name}】梭哈獲得【精神干擾】效果！`, "skill");
+          void addGameEvent(gameId, round, `【${caster.name}】發動【精神干擾】效果，讓【${target.name}】的玩家在混亂中【${dir > 0 ? "往前" : "往後"}】了一格！`, "skill");
+        } else {
+          void addGameEvent(gameId, round, `【${caster.name}】用【邱老師的板書】發動【精神干擾】，讓【${target.name}】的玩家在混亂中【${dir > 0 ? "往前" : "往後"}】了一格！`, "skill");
+        }
       }
       // H-1: 自由前進
       if (action.action_type === "H-1") {
         const r = rankMap.get(caster.id) || 1;
         caster.position = Math.min(100, caster.position + r);
-        void addGameEvent(gameId, round, `【${caster.name}】用【師大的網路結界】發動【按下空格鍵即可開始遊戲】，他能前進多遠呢？`, "skill");
+        if (action.metadata?.from_u3) {
+          void addGameEvent(gameId, round, `【${caster.name}】梭哈獲得【按下空格鍵即可開始遊戲】效果！`, "skill");
+          void addGameEvent(gameId, round, `【${caster.name}】發動【按下空格鍵即可開始遊戲】效果，他能前進多遠呢？`, "skill");
+          void addGameEvent(gameId, round, `【${caster.name}】因為是第【${r}】名，前進了【${r}】格！`, "skill");
+        } else {
+          void addGameEvent(gameId, round, `【${caster.name}】用【師大的網路結界】發動【按下空格鍵即可開始遊戲】，他能前進多遠呢？`, "skill");
+          void addGameEvent(gameId, round, `【${caster.name}】因為是第【${r}】名，前進了【${r}】格！`, "skill");
+        }
       }
       // S-2: 由玩家端瞬發，批次仲裁中如出現應已是 resolved，直接略過
       // (已消耗卡片在 castSkill 中處理，不在此重複執行)
@@ -302,8 +391,14 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
         const nextLadder = findNearestEscalator(caster.position);
         if (nextLadder) {
           caster.position = nextLadder[1];
-          void addGameEvent(gameId, round, `【${caster.name}】發動組合技【遲到前的幻想】，傳送到最近的【升天電梯】！`, "skill");
-          void addGameEvent(gameId, round, `【${caster.name}】利用【遲到前的幻想】搭乘【升天電梯】，從【第 ${nextLadder[0]} 格】攀升至【第 ${nextLadder[1]} 格】！`, "movement");
+          if (action.metadata?.from_u3) {
+            void addGameEvent(gameId, round, `【${caster.name}】梭哈獲得【遲到前的幻想】效果！`, "skill");
+            void addGameEvent(gameId, round, `【${caster.name}】發動【遲到前的幻想】效果，傳送至最近的【升天電梯】！`, "skill");
+            void addGameEvent(gameId, round, `【${caster.name}】利用【遲到前的幻想】搭乘【升天電梯】，從【第 ${nextLadder[0]} 格】攀升至【第 ${nextLadder[1]} 格】！`, "movement");
+          } else {
+            void addGameEvent(gameId, round, `【${caster.name}】發動組合技【遲到前的幻想】，傳送到最近的【升天電梯】！`, "skill");
+            void addGameEvent(gameId, round, `【${caster.name}】利用【遲到前的幻想】搭乘【升天電梯】，從【第 ${nextLadder[0]} 格】攀升至【第 ${nextLadder[1]} 格】！`, "movement");
+          }
         }
       }
       // U-2: 位置調換
@@ -326,9 +421,13 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
             if (available.length > 0) {
               const dropId = available[Math.floor(Math.random() * available.length)].id;
               actualTarget.cards = tCards.map(c => c.id === dropId ? { ...c, is_used: true } : c);
+              void addGameEvent(gameId, round, `【${caster.name}】梭哈獲得【常數項微分】效果！`, "skill");
+              void addGameEvent(gameId, round, `【${caster.name}】發動【常數項微分】效果，讓【${actualTarget.name}】的一張卡牌被微分！`, "skill");
             }
           }
         } else if (randomEffect === "S-2") {
+          void addGameEvent(gameId, round, `【${caster.name}】梭哈獲得【重修舊好】效果！`, "skill");
+          void addGameEvent(gameId, round, `【${caster.name}】發動【重修舊好】效果！`, "skill");
           // U-3 抽到 S-2：不直接執行，設為 waiting_choice 使玩家選牌
           await supabase.from("skill_actions").update({
             status: "waiting_choice",
@@ -338,11 +437,20 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
           continue;
         } else if (randomEffect === "C-1") {
           caster.position = Math.min(100, caster.position + 3);
+          void addGameEvent(gameId, round, `【${caster.name}】梭哈獲得【自我催眠】效果！`, "skill");
+          void addGameEvent(gameId, round, `【${caster.name}】發動【自我催眠】效果，睡夢中前進了 3 格！`, "skill");
         } else if (randomEffect === "H-1") {
           caster.position = Math.min(100, caster.position + 10);
+          void addGameEvent(gameId, round, `【${caster.name}】梭哈獲得【按下空格鍵即可開始遊戲】效果！`, "skill");
+          void addGameEvent(gameId, round, `【${caster.name}】發動【按下空格鍵即可開始遊戲】效果，前進了 10 格！`, "skill");
         } else if (randomEffect === "U-1") {
           const nextLadder = findNearestEscalator(caster.position);
-          if (nextLadder) caster.position = nextLadder[1];
+          if (nextLadder) {
+            caster.position = nextLadder[1];
+            void addGameEvent(gameId, round, `【${caster.name}】梭哈獲得【遲到前的幻想】效果！`, "skill");
+            void addGameEvent(gameId, round, `【${caster.name}】發動【遲到前的幻想】效果，傳送至最近的【升天電梯】！`, "skill");
+            void addGameEvent(gameId, round, `【${caster.name}】利用【遲到前的幻想】搭乘【升天電梯】，從【第 ${nextLadder[0]} 格】攀升至【第 ${nextLadder[1]} 格】！`, "movement");
+          }
         }
       }
 
@@ -351,7 +459,6 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
 
     // 5. 執行基礎移動結算 (根據本回合卡牌點數 + 被動修飾重新計算，避免 predicted_steps 不準)
     for (const p of Array.from(playerMap.values())) {
-      // 重新從當前卡牌狀態計算，確保精確性
       const pCards = p.cards as GameCard[];
       const roundCards = pCards.filter((c: GameCard) => c.round === round && !c.is_used);
       const activeCards = pCards.filter((c: GameCard) => !c.is_used);
@@ -360,24 +467,40 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
       const steps = Math.max(0, basePoints + suits.S - suits.C);
 
       if (steps > 0 || p.position === 100) {
-        // 檢查玩家是否有紅心牌 (保命牌)
-        const heartCard = pCards.find((c: GameCard) => !c.is_used && c.suit === "H");
-        const hasHeart = !!heartCard;
-
         const originalPos = p.position;
-        // 執行移動 (傳入 ignoreEel 為 hasHeart)
-        const { position: nextPos, starsGained, usedIgnoreEel } = moveBySteps(p.position, steps, {
-          ignoreEel: hasHeart
-        });
+        const pBounce = bounceOverHundred(originalPos + steps);
+        const isEelHead = EELS.some(([from]) => from === pBounce);
+        const heartCard = pCards.find((c: GameCard) => !c.is_used && c.suit === "H");
 
-        // 如果移動過程中真的觸發了保命 (遇到了電鰻但被忽略)，則消耗那張紅心牌
-        if (usedIgnoreEel && heartCard) {
-          (heartCard as GameCard).is_used = true;
-          void addGameEvent(gameId, round, `【${p.name}】用【師大的網路結界】發動【回應時間過長】，透過網路卡頓從蛇口驚險逃脫！`, "skill");
-        } else if (nextPos < originalPos + steps && nextPos !== 100) {
-          // 如果掉下去（除了因為爬梯子），一般是由於電鰻
-          void addGameEvent(gameId, round, `【${p.name}】遭遇【電鰻】，從【第 ${originalPos + steps} 格】掉落到【第 ${nextPos} 格】！`, "warning");
+        let ignoreEel = false;
+        if (isEelHead) {
+          if (heartCard) {
+            // 擁有紅心卡，預設允許防禦（前進到電鰻頭部），並不中斷大屏與其他玩家同時移動結算，於手機端提供 5 秒倒計時抉擇
+            ignoreEel = true;
+            
+            // 異步寫入 EEL_DEFENSE waiting_counter 行動
+            await supabase.from("skill_actions").insert({
+              game_id: gameId,
+              round: round,
+              player_id: p.id,
+              target_player_id: p.id,
+              action_type: "EEL_DEFENSE",
+              status: "waiting_counter",
+              consumed_cards: []
+            });
+            void addGameEvent(gameId, round, `【${p.name}】遭遇【電鰻】，正在猶豫要不要逃離……`, "warning");
+          } else {
+            // 無紅心卡，直接掉落
+            ignoreEel = false;
+            const eelTail = getJumpTarget(pBounce) || pBounce;
+            void addGameEvent(gameId, round, `【${p.name}】遭遇【電鰻】，從【第 ${pBounce} 格】掉落到【第 ${eelTail} 格】！`, "warning");
+          }
         }
+
+        // 執行位移計算
+        const { position: nextPos, starsGained } = moveBySteps(p.position, steps, {
+          ignoreEel: ignoreEel
+        });
 
         if (nextPos > originalPos + steps) {
           void addGameEvent(gameId, round, `【${p.name}】搭乘【升天電梯】，從【第 ${originalPos + steps} 格】攀升至【第 ${nextPos} 格】！`, "movement");
@@ -504,6 +627,59 @@ export async function completeU1Climb(actionId: string) {
 
     // 2. 將行動設為 resolved
     await supabase.from("skill_actions").update({ status: "resolved" }).eq("id", actionId);
+
+    return { success: true };
+  } catch (e: unknown) {
+    return { success: false, error: e instanceof Error ? e.message : "未知錯誤" };
+  }
+}
+
+export async function respondToEelDefense(actionId: string, useDefense: boolean) {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // 1. 取得該 EEL_DEFENSE 行動
+    const { data: action, error: aErr } = await supabase
+      .from("skill_actions")
+      .select("*")
+      .eq("id", actionId)
+      .single();
+
+    if (aErr || !action) return { success: false, error: "找不到行動" };
+
+    const { data: player, error: pErr } = await supabase
+      .from("players")
+      .select("*")
+      .eq("id", action.player_id)
+      .single();
+
+    if (pErr || !player) return { success: false, error: "找不到玩家" };
+
+    const pCards = player.cards as GameCard[];
+    const round = action.round;
+
+    // 由於在 resolveSkillsAndStartSettle 中玩家已經先位移到電鰻頭部 (player.position)
+    const pBounce = player.position;
+    const eelTail = getJumpTarget(pBounce) || pBounce;
+
+    if (useDefense) {
+      // 消耗 1 張紅心卡
+      const heartCard = pCards.find(c => !c.is_used && c.suit === "H");
+      if (!heartCard) return { success: false, error: "紅心卡不足" };
+
+      const updatedCards = pCards.map(c => c.id === heartCard.id ? { ...c, is_used: true } : c);
+      await supabase.from("players").update({ cards: updatedCards }).eq("id", player.id);
+      await supabase.from("skill_actions").update({ status: "resolved" }).eq("id", actionId);
+
+      void addGameEvent(action.game_id, round, `【${player.name}】用【師大的網路結界】發動【回應時間過長】，透過網路卡頓從蛇口驚險逃脫！`, "skill");
+    } else {
+      await supabase.from("skill_actions").update({ status: "cancelled" }).eq("id", actionId);
+      // 未防禦或超時，位移滑落回電鰻尾部
+      await supabase.from("players").update({ position: eelTail }).eq("id", player.id);
+      void addGameEvent(action.game_id, round, `【${player.name}】遭遇【電鰻】，從【第 ${pBounce} 格】掉落到【第 ${eelTail} 格】！`, "warning");
+    }
 
     return { success: true };
   } catch (e: unknown) {

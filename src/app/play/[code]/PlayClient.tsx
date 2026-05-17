@@ -14,7 +14,7 @@ import { Loader2, Sparkles, User, SkipForward, Heart, CheckCircle2, MessageCircl
 import { useEffect, useMemo, useRef, useState, use, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { castSkill } from "@/app/actions/skills";
-import { respondToSkillCounter } from "@/app/actions/resolveSkills";
+import { respondToSkillCounter, respondToEelDefense } from "@/app/actions/resolveSkills";
 
 export const TOKEN_COLORS = [
   "#FF6B6B",
@@ -353,7 +353,25 @@ export function PlayClient({ params }: Props) {
     suit: "S" | "C" | "H" | "D" | null;
     points: number | null;
     triggeredByActionId?: string;
+    fromU3?: boolean;
   }>({ isOpen: false, suit: null, points: null });
+
+  const [dismissedS1NotificationIds, setDismissedS1NotificationIds] = useState<string[]>([]);
+
+  // 尋找尚未確認且目標是自己的 S-1 或 U-3(S-1) 的卡牌捨棄動作
+  const activeS1Action = skillActions?.find((a) => {
+    if (a.status !== "resolved") return false;
+    if (a.target_player_id !== self?.id) return false;
+    if (dismissedS1NotificationIds.includes(a.id)) return false;
+
+    const isS1 = a.action_type === "S-1";
+    const isU3S1 = a.action_type === "U-3" && a.metadata?.random_effect === "S-1";
+    if (!isS1 && !isU3S1) return false;
+
+    return !!a.metadata?.discarded_card;
+  });
+
+  const lostCard = activeS1Action?.metadata?.discarded_card as any;
 
   // --- 攔截 / 遭遇危險 5秒倒計時邏輯 ---
   useEffect(() => {
@@ -372,7 +390,11 @@ export function PlayClient({ params }: Props) {
           
           // 時間到自動拒絕 (否)
           if (pendingCounter) {
-            void respondToSkillCounter(pendingCounter.id, false);
+            if (pendingCounter.action_type === "EEL_DEFENSE") {
+              void respondToEelDefense(pendingCounter.id, false);
+            } else {
+              void respondToSkillCounter(pendingCounter.id, false);
+            }
           } else if (snakeTarget) {
             const pos = snakeTarget.position;
             const stars = snakeTarget.starsGained;
@@ -417,17 +439,26 @@ export function PlayClient({ params }: Props) {
   // 由於移除了 BoardGrid，大屏端負責播動畫，手機端在 settle 階段過一段時間後自動確認
   useEffect(() => {
     if (game?.phase === "settle" && settledRoundRef.current !== game.current_round) {
+      // 如果仍有防禦反制在等待中（如電鰻防禦抉擇），先不完成移動，等待其解決 (pendingCounter === null)
+      if (pendingCounter) return;
+
+      // 檢查是否發動過電鰻防禦，若是則用 1 秒的極速延遲，否則用預設的 5 秒
+      const hadEelDefense = skillActions?.some(
+        a => a.player_id === self?.id && (a.action_type as string) === "EEL_DEFENSE" && a.round === game.current_round
+      );
+      const delay = hadEelDefense ? 1000 : 5000;
+
       const timer = setTimeout(() => {
         void latestHandleMoveDone.current();
-      }, 5000);
+      }, delay);
       return () => clearTimeout(timer);
     }
-  }, [game?.phase, game?.current_round]);
+  }, [game?.phase, game?.current_round, pendingCounter, skillActions, self?.id]);
 
   const handleCastSkill = async (skill: AvailableSkill, explicitTarget?: string) => {
     if (!game || !self || hasActedSkill) return;
 
-    if (skill.actionType === "S-2") {
+    if (skill.actionType === "S-2" && !skill.fromU3) {
       setS2Selection({ isOpen: true, suit: null, points: null });
       setSkillPreview(null);
       setSkillStage("idle");
@@ -441,7 +472,9 @@ export function PlayClient({ params }: Props) {
       const availableCards = getAvailableCards(self.cards).sort((a, b) => (a.round || 0) - (b.round || 0));
       const counts = countSuits(availableCards);
 
-      if (skill.actionType === "U-3") {
+      if (skill.fromU3) {
+        consumed = availableCards.map(c => c.id);
+      } else if (skill.actionType === "U-3") {
         consumed = availableCards.map(c => c.id);
       } else if (skill.actionType === "S-1") {
         const card = availableCards.find(c => c.suit === "S");
@@ -481,7 +514,18 @@ export function PlayClient({ params }: Props) {
         }
       }
 
-      const res = await castSkill(game.id, game.current_round, self.id, skill.actionType, consumed, targetId || undefined, cDirection ? { direction: cDirection } : undefined);
+      const res = await castSkill(
+        game.id,
+        game.current_round,
+        self.id,
+        skill.actionType,
+        consumed,
+        targetId || undefined,
+        {
+          ...(skill.fromU3 ? { from_u3: true } : {}),
+          ...(cDirection ? { direction: cDirection } : {})
+        }
+      );
       if (res.success) {
         setHasActedSkillState(true);
         setSkillPreview(null);
@@ -501,7 +545,7 @@ export function PlayClient({ params }: Props) {
 
   const handleConfirmS2 = async () => {
     if (!game || !self) return;
-    const { suit, points, triggeredByActionId } = s2Selection;
+    const { suit, points, triggeredByActionId, fromU3 } = s2Selection;
     if (!suit || !points) return;
 
     setSkillBusy(true);
@@ -509,7 +553,10 @@ export function PlayClient({ params }: Props) {
     try {
       let consumed: string[] = [];
 
-      if (!triggeredByActionId) {
+      if (fromU3) {
+        const availableCards = getAvailableCards(self.cards);
+        consumed = availableCards.map(c => c.id);
+      } else if (!triggeredByActionId) {
         // 正常主動施放 S-2：計算要消耗的黑桃/菱形卡
         const availableCards = getAvailableCards(self.cards).sort((a, b) => (a.round || 0) - (b.round || 0));
         const matching = availableCards.filter(c => c.suit === "S").slice(0, 2);
@@ -519,7 +566,6 @@ export function PlayClient({ params }: Props) {
           if (dCard) consumed.push(dCard.id);
         }
       }
-      // U-3 觸發的 S-2 不需要消耗任何卡片
 
       const res = await castSkill(
         game.id,
@@ -531,6 +577,7 @@ export function PlayClient({ params }: Props) {
         {
           s2_suit: suit,
           s2_points: points,
+          ...(fromU3 ? { from_u3_s2: true } : {}),
           ...(triggeredByActionId ? { from_u3_action_id: triggeredByActionId } : {})
         }
       );
@@ -719,6 +766,37 @@ export function PlayClient({ params }: Props) {
           </MotionWrapper>
         )}
 
+        {activeS1Action && lostCard && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-milky-brown/70 p-4 backdrop-blur-md transition-all">
+            <MotionWrapper type="bounce" className="w-full max-w-sm">
+              <div className="pudding-card relative overflow-y-auto max-h-[90vh] shadow-2xl border-4 border-white text-center flex flex-col items-center p-8">
+                <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-[2rem] bg-milky-accent/10 border-2 border-milky-accent text-milky-accent shadow-lg animate-bounce">
+                  <Sparkles className="h-10 w-10" />
+                </div>
+                <h2 className="text-3xl font-black text-milky-brown mb-2">卡牌被微分！</h2>
+                <p className="text-sm font-semibold text-milky-brown/60 mb-6">
+                  你遺失了 【{lostCard.name}】
+                </p>
+                <div className="mb-8 w-[140px] h-[210px] rounded-[2rem] overflow-hidden border-4 border-milky-beige/30 shadow-2xl bg-white flex items-center justify-center shrink-0">
+                  <img
+                    src={`https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/card/card_${({ S: 'h', C: 'ch', D: 'hu', H: 'st' } as Record<string, string>)[lostCard.suit]}_${lostCard.points}.png`}
+                    alt={lostCard.name}
+                    className="w-full h-full object-contain scale-[0.8]"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    setDismissedS1NotificationIds((prev) => [...prev, activeS1Action.id]);
+                  }}
+                  className="pudding-button-primary w-full shadow-milky-apricot/30"
+                >
+                  確認
+                </button>
+              </div>
+            </MotionWrapper>
+          </div>
+        )}
+
         {(needsAnswer || isCounterPhase) && (
           <div className="fixed inset-0 z-[90] flex items-center justify-center bg-milky-brown/60 p-4 backdrop-blur-sm transition-all">
             <MotionWrapper type="bounce" className="w-full max-w-sm">
@@ -733,12 +811,34 @@ export function PlayClient({ params }: Props) {
                     <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-milky-apricot/20 text-milky-brown shadow-inner"><Sparkles className="h-12 w-12 animate-pulse" /></div>
                     {pendingCounter && (
                       <div className="space-y-6">
-                        <h2 className="text-3xl font-black text-milky-brown">技能攔截！</h2>
-                        <p className="text-sm font-bold text-milky-brown/60">對手發動了 {pendingCounter.action_type}。<br/>消耗 2 張菱形發動「白板防禦」反制？</p>
-                        <div className="flex gap-4 pt-4">
-                          <button onClick={() => respondToSkillCounter(pendingCounter.id, true)} className="pudding-button-primary flex-1 bg-milky-accent text-white">是</button>
-                          <button onClick={() => respondToSkillCounter(pendingCounter.id, false)} className="pudding-button-secondary flex-1">否</button>
-                        </div>
+                        {pendingCounter.action_type === "EEL_DEFENSE" ? (
+                          <>
+                            <h2 className="text-3xl font-black text-milky-brown animate-pulse">遭遇危險！</h2>
+                            <p className="text-sm font-semibold text-milky-brown/60">
+                              即將跌落，是否消耗 1 張【師大的網路結界】（紅心）發動【回應時間過長】避開危險？
+                            </p>
+                            <div className="flex gap-4 pt-4">
+                              <button onClick={() => respondToEelDefense(pendingCounter.id, true)} className="pudding-button-primary flex-1 bg-milky-accent text-white hover:bg-milky-accent/90">是</button>
+                              <button onClick={() => respondToEelDefense(pendingCounter.id, false)} className="pudding-button-secondary flex-1">否</button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <h2 className="text-3xl font-black text-milky-brown">技能攔截！</h2>
+                            <p className="text-sm font-bold text-milky-brown/60">
+                              對手發動了【{({
+                                "S-1": "常數項微分",
+                                "C-2": "精神干擾",
+                                "U-2": "天手力",
+                              } as Record<string, string>)[pendingCounter.action_type] || pendingCounter.action_type}】。<br/>
+                              消耗 2 張菱形發動「白板防禦」反制？
+                            </p>
+                            <div className="flex gap-4 pt-4">
+                              <button onClick={() => respondToSkillCounter(pendingCounter.id, true)} className="pudding-button-primary flex-1 bg-milky-accent text-white">是</button>
+                              <button onClick={() => respondToSkillCounter(pendingCounter.id, false)} className="pudding-button-secondary flex-1">否</button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
                     {snakeTarget && (
@@ -825,7 +925,70 @@ export function PlayClient({ params }: Props) {
                   <button onClick={() => { setSkillPreview(null); setSkillStage("idle"); setIsDrawerOpen(true); }} className="pudding-button-secondary flex-1">取消</button>
                   <button
                     onClick={() => {
-                      if (skillPreview.requiresTarget) {
+                      if (skillPreview.actionType === "U-3") {
+                        const effects = ["S-1", "S-2", "C-1", "C-2", "H-1", "U-1"] as const;
+                        const rolled = effects[Math.floor(Math.random() * effects.length)];
+                        
+                        if (rolled === "S-2") {
+                          alert("梭哈成功！您獲得了【重修舊好】！");
+                          setS2Selection({ isOpen: true, suit: null, points: null, fromU3: true });
+                          setSkillStage("idle");
+                          setSkillPreview(null);
+                        } else if (rolled === "C-1") {
+                          alert("梭哈成功！您獲得了【自我催眠】！");
+                          setSkillPreview({
+                            actionType: "C-1",
+                            requiresTarget: false,
+                            costDescription: "",
+                            name: "自我催眠",
+                            description: "選擇自己往前或退後 1 格。",
+                            fromU3: true
+                          });
+                          setSkillStage("direction");
+                        } else if (rolled === "C-2") {
+                          alert("梭哈成功！您獲得了【精神干擾】！");
+                          setSkillPreview({
+                            actionType: "C-2",
+                            requiresTarget: true,
+                            costDescription: "",
+                            name: "精神干擾",
+                            description: "指定一名對手往前或後退 1 格。",
+                            fromU3: true
+                          });
+                          setSkillStage("target");
+                        } else if (rolled === "S-1") {
+                          alert("梭哈成功！您獲得了【常數項微分】！");
+                          setSkillPreview({
+                            actionType: "S-1",
+                            requiresTarget: true,
+                            costDescription: "",
+                            name: "常數項微分",
+                            description: "指定一名對手，隨機丟棄其一張卡牌。",
+                            fromU3: true
+                          });
+                          setSkillStage("target");
+                        } else if (rolled === "H-1") {
+                          alert("梭哈成功！您獲得了【按下空格鍵即可開始遊戲】！");
+                          handleCastSkill({
+                            actionType: "H-1",
+                            requiresTarget: false,
+                            costDescription: "",
+                            name: "按下空格鍵即可開始遊戲",
+                            description: "",
+                            fromU3: true
+                          });
+                        } else if (rolled === "U-1") {
+                          alert("梭哈成功！您獲得了【遲到前的幻想】！");
+                          handleCastSkill({
+                            actionType: "U-1",
+                            requiresTarget: false,
+                            costDescription: "",
+                            name: "遲到前的幻想",
+                            description: "",
+                            fromU3: true
+                          });
+                        }
+                      } else if (skillPreview.requiresTarget) {
                         setSkillStage("target");
                       } else if (skillPreview.actionType === "C-1") {
                         setSkillStage("direction");
@@ -969,7 +1132,7 @@ export function PlayClient({ params }: Props) {
         <div className="flex items-center gap-3"><div className="h-10 w-10 rounded-[1.2rem] bg-milky-brown text-white flex items-center justify-center shadow-lg"><Heart className="h-5 w-5" /></div><h2 className="text-xl font-black text-milky-brown tracking-tighter">我的卡池</h2></div>
         <div className="grid grid-cols-4 gap-3 rounded-[2rem] bg-white p-5 shadow-sm border border-milky-beige/30 text-center">
           <div className="flex flex-col items-center gap-1"><img src="https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/h.png" alt="S" className="w-9 h-9 object-contain scale-[1.5]" /><p className="text-lg font-black text-milky-brown">{suitCounts.S}</p></div>
-          <div className="flex flex-col items-center gap-1"><img src="https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/ch.png" alt="C" className="w-12 h-12 object-contain scale-[2.0]" /><p className="text-lg font-black text-milky-brown">{suitCounts.C}</p></div>
+          <div className="flex flex-col items-center gap-1"><img src="https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/ch.png" alt="C" className="w-12 h-12 object-contain scale-[1.0]" /><p className="text-lg font-black text-milky-brown">{suitCounts.C}</p></div>
           <div className="flex flex-col items-center gap-1"><img src="https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/hu.png" alt="D" className="w-7 h-7 object-contain scale-[1.2]" /><p className="text-lg font-black text-milky-accent">{suitCounts.D}</p></div>
           <div className="flex flex-col items-center gap-1"><img src="https://tbggzrtajphtwrsyqxpg.supabase.co/storage/v1/object/public/media/media/picture/icon/st.png" alt="H" className="w-6 h-6 object-contain" /><p className="text-lg font-black text-milky-accent">{suitCounts.H}</p></div>
         </div>
@@ -992,7 +1155,7 @@ export function PlayClient({ params }: Props) {
                         <span className="text-[10px] font-black text-white bg-black/60 px-2 py-0.5 rounded-full tracking-widest">USED</span>
                       </div>
                     )}
-                    <img src={cardImgSrc} alt={c.name} className="w-full h-full object-cover" />
+                    <img src={cardImgSrc} alt={c.name} className="w-full h-full object-contain scale-[0.8]" />
                     {!c.is_used && <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity" />}
                   </MotionWrapper>
                 </li>

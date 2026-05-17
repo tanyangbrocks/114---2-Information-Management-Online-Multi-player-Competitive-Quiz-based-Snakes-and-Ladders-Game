@@ -7,6 +7,7 @@ export type AvailableSkill = {
   costDescription: string;
   name: string;
   description: string;
+  fromU3?: boolean;
 };
 
 // 取得玩家目前尚未被消耗的卡牌
@@ -137,13 +138,13 @@ export function calculateAvailableSkills(cards: GameCard[], otherPlayers: Player
       description: "指定一名其他玩家，使其向前或向後移動 1 格。"
     });
   }
-  // H-1: 回應時間過長 (1H)
+  // H-1: 按下空格鍵即可開始遊戲 (1H)
   if (canAfford(counts, 0, 0, 1, 0)) {
     skills.push({
       actionType: "H-1",
       requiresTarget: false,
       costDescription: "1H",
-      name: "回應時間過長",
+      name: "按下空格鍵即可開始遊戲",
       description: "根據當前排名，額外移動對應格數（第 1 名 +1，第 2 名 +2...）。"
     });
   }

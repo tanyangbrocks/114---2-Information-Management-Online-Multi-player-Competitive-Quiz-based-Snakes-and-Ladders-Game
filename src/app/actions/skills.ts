@@ -120,6 +120,9 @@ export async function castSkill(
         }
       }
       
+      if (metadata?.from_u3_s2) {
+        void addGameEvent(gameId, round, `【${player.name}】認為【梭哈是一種智慧】，祝你好運！`, "skill");
+      }
       void addGameEvent(gameId, round, `【${player.name}】決定【重修舊好】，祝他好運！`, "skill");
       return { success: true };
     }
@@ -163,7 +166,7 @@ export async function castSkill(
       return { success: false, error: "寫入技能動作失敗: " + insertErr.message };
     }
 
-    if (actionType === "U-3") {
+    if (actionType === "U-3" || metadata?.from_u3) {
       void addGameEvent(gameId, round, `【${player.name}】認為【梭哈是一種智慧】，祝你好運！`, "skill");
     }
 
