@@ -40,7 +40,7 @@ export async function castSkill(
     // 2. 玩家卡牌驗證
     const { data: player, error: playerErr } = await supabase
       .from("players")
-      .select("cards")
+      .select("name, cards")
       .eq("id", playerId)
       .single();
 

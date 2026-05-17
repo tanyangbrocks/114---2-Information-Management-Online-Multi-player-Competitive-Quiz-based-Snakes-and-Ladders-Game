@@ -316,6 +316,37 @@ export function PlayClient({ params }: Props) {
   const [pendingCounter, setPendingCounter] = useState<{ id: string, action_type: string } | null>(null);
   const [snakeTarget, setSnakeTarget] = useState<{ position: number, starsGained: number, cards: GameCard[] } | null>(null);
   const [counterTimer, setCounterTimer] = useState<number | null>(null);
+  const isCounterPhase = !!pendingCounter || !!snakeTarget;
+
+  const performMove = useCallback(async (pos: number, stars: number, heartToConsume?: string) => {
+    if (!self || !game) return;
+    try {
+      const updatedCards = self.cards.map(c => {
+        if (c.id === heartToConsume) {
+          return { ...c, is_used: true };
+        }
+        return c;
+      });
+      const updatePayload: Record<string, unknown> = {
+        position: pos,
+        stars: self.stars + stars,
+      };
+      // 只有在有紅心卡要消耗時才更新卡牌
+      if (heartToConsume) {
+        updatePayload.cards = updatedCards;
+      }
+      const { error: upErr } = await supabase
+        .from("players")
+        .update(updatePayload)
+        .eq("id", self.id);
+      if (upErr) throw upErr;
+      await reload();
+      void sendMoveDone(self.id, self.name, pos);
+      void sendSignal();
+    } catch (e) {
+      console.error(e);
+    }
+  }, [self, game, supabase, reload, sendMoveDone, sendSignal]);
 
   const [s2Selection, setS2Selection] = useState<{
     isOpen: boolean;
@@ -392,36 +423,6 @@ export function PlayClient({ params }: Props) {
       return () => clearTimeout(timer);
     }
   }, [game?.phase, game?.current_round]);
-
-  const performMove = useCallback(async (pos: number, stars: number, heartToConsume?: string) => {
-    if (!self || !game) return;
-    try {
-      const updatedCards = self.cards.map(c => {
-        if (c.id === heartToConsume) {
-          return { ...c, is_used: true };
-        }
-        return c;
-      });
-      const updatePayload: Record<string, unknown> = {
-        position: pos,
-        stars: self.stars + stars,
-      };
-      // 只有在有紅心卡要消耗時才更新卡牌
-      if (heartToConsume) {
-        updatePayload.cards = updatedCards;
-      }
-      const { error: upErr } = await supabase
-        .from("players")
-        .update(updatePayload)
-        .eq("id", self.id);
-      if (upErr) throw upErr;
-      await reload();
-      void sendMoveDone(self.id, self.name, pos);
-      void sendSignal();
-    } catch (e) {
-      console.error(e);
-    }
-  }, [self, game, supabase, reload, sendMoveDone, sendSignal]);
 
   const handleCastSkill = async (skill: AvailableSkill, explicitTarget?: string) => {
     if (!game || !self || hasActedSkill) return;
@@ -603,7 +604,6 @@ export function PlayClient({ params }: Props) {
   const isWaitingSettle = game.phase === "settle" &&
     !localMoveTarget &&
     settledRoundRef.current !== game.current_round;
-  const isCounterPhase = !!pendingCounter || !!snakeTarget;
 
   const currentRoundCard = self.cards.find(c => c.round === game.current_round);
   const correctChoice = game.rounds_config[game.current_round - 1]?.answer;

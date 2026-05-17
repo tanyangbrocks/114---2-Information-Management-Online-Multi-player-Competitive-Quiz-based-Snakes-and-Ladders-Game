@@ -29,7 +29,7 @@ export type SkillAction = {
   consumed_cards: string[]; // 卡牌 ID 陣列
   metadata?: Record<string, unknown>;
   created_at: string;
-  status: "pending" | "resolved" | "cancelled" | "waiting_counter" | "waiting_choice" | "ready";
+  status: "pending" | "resolved" | "cancelled" | "waiting_counter" | "waiting_choice" | "ready" | "u1_climbing";
 };
 
 export type GameRow = {
