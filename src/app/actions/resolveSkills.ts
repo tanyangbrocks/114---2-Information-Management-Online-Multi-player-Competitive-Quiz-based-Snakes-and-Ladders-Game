@@ -90,7 +90,7 @@ export async function resolveNextSkill(gameId: string, round: number) {
   }
 }
 
-async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction, players: PlayerRow[], round: number): Promise<{ statusOverride?: string; metadataOverride?: any } | void> {
+async function executeSkillEffect(supabase: SupabaseClient, action: SkillAction, players: PlayerRow[], _round: number): Promise<{ statusOverride?: string; metadataOverride?: Record<string, unknown> } | void> {
   const player = players.find(p => p.id === action.player_id);
   const target = players.find(p => p.id === action.target_player_id);
   if (!player) return;
@@ -423,7 +423,7 @@ export async function resolveSkillsAndStartSettle(gameId: string, round: number)
 
 // --- Helpers ---
 
-function drawServerCard(slot: 1 | 2, round: number): GameCard {
+export function drawServerCard(slot: 1 | 2, round: number): GameCard {
   const suits: Suit[] = ["S", "C", "D", "H"];
   const suit = suits[Math.floor(Math.random() * 4)];
   const points = slot === 1 ? Math.floor(Math.random() * 4) + 1 : Math.floor(Math.random() * 3) + 6;
